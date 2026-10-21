@@ -8,3 +8,6 @@ import { authRouter } from './routes/auth.js';
 import { publicRouter } from './routes/public.js';
 import { bookingRouter } from './routes/bookings.js';
 import { adminRouter } from './routes/admin.js';
+
+
+// 1. Enviro
