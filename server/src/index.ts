@@ -10,4 +10,5 @@ import { bookingRouter } from './routes/bookings.js';
 import { adminRouter } from './routes/admin.js';
 
 
-// 1. Enviro
+// 1. Environment Variables
+// Ensuring that all required environment variables are set and valid
