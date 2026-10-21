@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Dependencies
+node_modules
+
+# Environment Variables
+node_modules
+.env
+.env.*
+!.env.example
+dist
+*.log
+client/tsconfig.tsbuildinfo
+
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
