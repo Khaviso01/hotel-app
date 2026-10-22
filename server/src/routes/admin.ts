@@ -135,3 +135,30 @@ adminRouter.delete('/rooms/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// POST: Create a new branch with validated request body
+adminRouter.post('/branches', async (req, res, next) => {
+  try {
+    res.status(201).json(
+      await db.branch.create({
+        data: branchSchema.parse(req.body),
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT: Update an existing branch by ID
+adminRouter.put('/branches/:id', async (req, res, next) => {
+  try {
+    res.json(
+      await db.branch.update({
+        where: { id: req.params.id },
+        data: branchSchema.parse(req.body),
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
