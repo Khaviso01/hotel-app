@@ -67,3 +67,7 @@ app.use(
     res.status(500).json({ error: 'Server error. Please try again.' });
   }
 );
+
+// 5. SERVER INITIALIZATION
+const PORT = Number(process.env.PORT || 4000);
+app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
