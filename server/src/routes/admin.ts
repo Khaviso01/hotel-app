@@ -176,3 +176,32 @@ adminRouter.delete('/branches/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve a list of all registered users (limited fields)
+adminRouter.get('/users', async (_req, res, next) => {
+  try {
+    res.json(
+      await db.user.findMany({
+        select: { id: true, name: true, email: true, role: true, createdAt: true },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET: Retrieve all reviews including associated user and branch names
+adminRouter.get('/reviews', async (_req, res, next) => {
+  try {
+    res.json(
+      await db.review.findMany({
+        include: {
+          user: { select: { name: true } },
+          branch: { select: { name: true } },
+        },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
