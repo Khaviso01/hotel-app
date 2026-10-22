@@ -40,4 +40,19 @@ app.use('/api/bookings', bookingRouter);
 app.use('/api/admin', adminRouter);
 
 // Health check endpoint for monitoring services
-app.get('/api/health', (_req, res) => res.json({ok: true}));
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// 4. Error Handling - Centralized error handling middleware
+app.use(
+  (
+    error: unknown,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    // Handle Zod schema validation errors (e.g., bad request body/parameters)
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        error: error.issues.map((x) => x.message).join(', '),
+      });
+    }
