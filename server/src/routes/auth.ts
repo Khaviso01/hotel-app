@@ -14,3 +14,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
 });
+// Helper function to sign a JWT token with a 7-day expiration
+function token(user: { id: string; role: string }) {
+  return jwt.sign(user, process.env.JWT_SECRET!, { expiresIn: '7d' });
+}
