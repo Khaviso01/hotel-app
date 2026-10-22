@@ -27,3 +27,28 @@ const branchSchema = z.object({
   description: z.string(),
   image: z.string().url(),
 });
+
+// GET: Retrieve overall dashboard statistics and total confirmed revenue
+adminRouter.get('/stats', async (_req, res, next) => {
+  try {
+    const [bookings, rooms, branches, users, revenue] = await Promise.all([
+      db.booking.count(),
+      db.room.count(),
+      db.branch.count(),
+      db.user.count(),
+      db.booking.aggregate({
+        where: { status: 'CONFIRMED' },
+        _sum: { total: true },
+      }),
+    ]);
+    res.json({
+      bookings,
+      rooms,
+      branches,
+      users,
+      revenue: revenue._sum.total || 0,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
