@@ -56,3 +56,14 @@ app.use(
         error: error.issues.map((x) => x.message).join(', '),
       });
     }
+    // Handle Prisma specific errors (P2025: Record to update/delete not found)
+    const e = error as { code?: string; message?: string };
+    if (e.code === 'P2025') {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    // Log unhandled server errors and return generic internal error response
+    console.error(error);
+    res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+);
