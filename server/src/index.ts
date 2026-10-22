@@ -26,3 +26,10 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
 
 // Parse incoming JSON request bodies (payload limit set to 100kb for safety)
 app.use(express.json({ limit: '100kb' }));
+
+// 3. ROUTES & RATE LIMITING - Rate limiter for authentication routes: max 40 requests per 15-minute window
+app.use(
+  '/api/auth',
+  rateLimit({ windowMs: 15 * 60 * 1000, limit: 40 }),
+  authRouter
+);
