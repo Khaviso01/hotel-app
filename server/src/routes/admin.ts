@@ -69,3 +69,28 @@ adminRouter.get('/bookings', async (_req, res, next) => {
     next(e);
   }
 });
+
+// PATCH: Update booking status and send a notification to the user
+adminRouter.patch('/bookings/:id', async (req, res, next) => {
+  try {
+    const data = z
+      .object({
+        status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED']),
+      })
+      .parse(req.body);
+    const booking = await db.booking.update({
+      where: { id: req.params.id },
+      data,
+    });
+    await db.notification.create({
+      data: {
+        userId: booking.userId,
+        title: 'Booking updated',
+        message: 'Your booking ' + booking.reference + ' is ' + data.status.toLowerCase(),
+      },
+    });
+    res.json(booking);
+  } catch (e) {
+    next(e);
+  }
+});
