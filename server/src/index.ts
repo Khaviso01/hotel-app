@@ -33,3 +33,8 @@ app.use(
   rateLimit({ windowMs: 15 * 60 * 1000, limit: 40 }),
   authRouter
 );
+
+// Mount core API endpoints
+app.use('/api', publicRouter);
+app.use('/api/bookings', bookingRouter);
+app.use('/api/admin', adminRouter);
