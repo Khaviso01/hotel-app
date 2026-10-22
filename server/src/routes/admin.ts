@@ -94,3 +94,16 @@ adminRouter.patch('/bookings/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// POST: Create a new room with validated request body
+adminRouter.post('/rooms', async (req, res, next) => {
+  try {
+    res.status(201).json(
+      await db.room.create({
+        data: roomSchema.parse(req.body),
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
