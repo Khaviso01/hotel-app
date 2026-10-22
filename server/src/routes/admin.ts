@@ -162,3 +162,17 @@ adminRouter.put('/branches/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// DELETE: Remove a branch (prevents deletion if associated rooms have active reservations)
+adminRouter.delete('/branches/:id', async (req, res, next) => {
+  try {
+    const active = await db.booking.count({
+      where: { room: { branchId: req.params.id }, status: { not: 'CANCELLED' } },
+    });
+    if (active) return res.status(409).json({ error: 'Branch has active reservations' });
+    await db.branch.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
