@@ -52,3 +52,20 @@ adminRouter.get('/stats', async (_req, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve all bookings with nested room, branch, and user details
+adminRouter.get('/bookings', async (_req, res, next) => {
+  try {
+    res.json(
+      await db.booking.findMany({
+        include: {
+          room: { include: { branch: true } },
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
