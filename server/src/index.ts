@@ -38,3 +38,6 @@ app.use(
 app.use('/api', publicRouter);
 app.use('/api/bookings', bookingRouter);
 app.use('/api/admin', adminRouter);
+
+// Health check endpoint for monitoring services
+app.get('/api/health', (_req, res) => res.json({ok: true}));
