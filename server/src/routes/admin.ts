@@ -18,3 +18,12 @@ const roomSchema = z.object({
   available: z.boolean(),
   image: z.string().url(),
 });
+
+// Validation schema for creating and updating branches
+const branchSchema = z.object({
+  name: z.string().min(2),
+  city: z.string().min(2),
+  address: z.string().min(2),
+  description: z.string(),
+  image: z.string().url(),
+});
