@@ -107,3 +107,31 @@ adminRouter.post('/rooms', async (req, res, next) => {
     next(e);
   }
 });
+
+// PUT: Update an existing room by ID
+adminRouter.put('/rooms/:id', async (req, res, next) => {
+  try {
+    res.json(
+      await db.room.update({
+        where: { id: req.params.id },
+        data: roomSchema.parse(req.body),
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE: Remove a room (prevents deletion if active, non-cancelled bookings exist)
+adminRouter.delete('/rooms/:id', async (req, res, next) => {
+  try {
+    const count = await db.booking.count({
+      where: { roomId: req.params.id, status: { not: 'CANCELLED' } },
+    });
+    if (count) return res.status(409).json({ error: 'Cancel or reassign active bookings first' });
+    await db.room.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
