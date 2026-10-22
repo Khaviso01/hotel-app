@@ -205,3 +205,32 @@ adminRouter.get('/reviews', async (_req, res, next) => {
     next(e);
   }
 });
+
+// DELETE: Remove a specific review by ID
+adminRouter.delete('/reviews/:id', async (req, res, next) => {
+  try {
+    await db.review.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST: Broadcast a notification message to all registered users
+adminRouter.post('/notifications', async (req, res, next) => {
+  try {
+    const v = z
+      .object({
+        title: z.string().min(2),
+        message: z.string().min(2),
+      })
+      .parse(req.body);
+    const users = await db.user.findMany({ select: { id: true } });
+    await db.notification.createMany({
+      data: users.map((u) => ({ userId: u.id, ...v })),
+    });
+    res.status(201).json({ sent: users.length });
+  } catch (e) {
+    next(e);
+  }
+});
