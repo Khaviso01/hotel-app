@@ -18,3 +18,31 @@ const registerSchema = z.object({
 function token(user: { id: string; role: string }) {
   return jwt.sign(user, process.env.JWT_SECRET!, { expiresIn: '7d' });
 }
+
+// POST: Register a new user account and return an authentication token
+authRouter.post('/register', async (req, res, next) => {
+  try {
+    const data = registerSchema.parse(req.body);
+
+    // Check if the email address is already taken
+    if (await db.user.findUnique({ where: { email: data.email.toLowerCase() } })) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+
+    // Hash the password securely and create the user record
+    const user = await db.user.create({
+      data: {
+        name: data.name,
+        email: data.email.toLowerCase(),
+        passwordHash: await bcrypt.hash(data.password, 12),
+      },
+    });
+
+    res.status(201).json({
+      token: token({ id: user.id, role: user.role }),
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
