@@ -87,3 +87,18 @@ authRouter.get('/me', auth, async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
+
+// PATCH: Update profile information for the currently authenticated user
+authRouter.patch('/me', auth, async (req: AuthRequest, res, next) => {
+  try {
+    const { name } = z.object({ name: z.string().min(2) }).parse(req.body);
+    const updatedUser = await db.user.update({
+      where: { id: req.user!.id },
+      data: { name },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    res.json(updatedUser);
+  } catch (e) {
+    next(e);
+  }
+});
