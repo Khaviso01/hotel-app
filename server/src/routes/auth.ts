@@ -46,3 +46,31 @@ authRouter.post('/register', async (req, res, next) => {
     next(e);
   }
 });
+
+// POST: Authenticate user credentials and return an authentication token
+authRouter.post('/login', async (req, res, next) => {
+  try {
+    const data = z
+      .object({
+        email: z.string().email(),
+        password: z.string(),
+      })
+      .parse(req.body);
+
+    const user = await db.user.findUnique({
+      where: { email: data.email.toLowerCase() },
+    });
+
+    // Validate user existence and verify password hash
+    if (!user?.passwordHash || !(await bcrypt.compare(data.password, user.passwordHash))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    res.json({
+      token: token({ id: user.id, role: user.role }),
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
