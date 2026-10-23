@@ -74,3 +74,16 @@ authRouter.post('/login', async (req, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve profile details for the currently authenticated user
+authRouter.get('/me', auth, async (req: AuthRequest, res, next) => {
+  try {
+    const user = await db.user.findUnique({
+      where: { id: req.user!.id },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
