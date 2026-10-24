@@ -84,3 +84,11 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
         checkOut: { gt: start },
       },
     });
+
+    if (overlap) {
+      return res.status(409).json({ error: 'Room already booked for these dates' });
+    }
+
+    // Calculate total price based on duration in nights, room nightly rate, and standard service fees
+    const nights = Math.round((+end - +start) / 86400000);
+    const total = nights * room.price + 150;
