@@ -109,3 +109,42 @@ publicRouter.post('/favourites/:branchId', auth, async (req: AuthRequest, res, n
     next(e);
   }
 });
+
+// DELETE: Remove a branch from the authenticated user's favourites
+publicRouter.delete('/favourites/:branchId', auth, async (req: AuthRequest, res, next) => {
+  try {
+    await db.favourite.deleteMany({
+      where: { userId: req.user!.id, branchId: req.params.branchId },
+    });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET: Retrieve all in-app notifications for the authenticated user, ordered by newest first
+publicRouter.get('/notifications', auth, async (req: AuthRequest, res, next) => {
+  try {
+    res.json(
+      await db.notification.findMany({
+        where: { userId: req.user!.id },
+        orderBy: { createdAt: 'desc' },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PATCH: Mark a specific notification as read for the authenticated user
+publicRouter.patch('/notifications/:id/read', auth, async (req: AuthRequest, res, next) => {
+  try {
+    const result = await db.notification.updateMany({
+      where: { id: req.params.id, userId: req.user!.id },
+      data: { read: true },
+    });
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
