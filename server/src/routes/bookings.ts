@@ -92,3 +92,17 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
     // Calculate total price based on duration in nights, room nightly rate, and standard service fees
     const nights = Math.round((+end - +start) / 86400000);
     const total = nights * room.price + 150;
+
+     // Create the booking record with a unique generated reference code
+    const booking = await db.booking.create({
+      data: {
+        reference: 'TR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
+        userId: req.user!.id,
+        roomId: room.id,
+        checkIn: start,
+        checkOut: end,
+        guests: v.guests,
+        total,
+      },
+      include,
+    });
