@@ -68,3 +68,19 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
     ) {
       return res.status(400).json({ error: 'Choose valid future dates' });
     }
+
+    // Verify room existence, active availability flag, and guest capacity limits
+    const room = await db.room.findUnique({ where: { id: v.roomId } });
+    if (!room?.available || v.guests > room.capacity) {
+      return res.status(400).json({ error: 'Room unavailable or capacity exceeded' });
+    }
+
+    // Check for existing overlapping bookings for this room that are not cancelled
+    const overlap = await db.booking.count({
+      where: {
+        roomId: room.id,
+        status: { not: 'CANCELLED' },
+        checkIn: { lt: end },
+        checkOut: { gt: start },
+      },
+    });
