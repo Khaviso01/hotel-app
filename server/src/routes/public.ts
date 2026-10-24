@@ -40,3 +40,38 @@ publicRouter.get('/branches/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve all rooms, with optional branch ID filtering and branch details
+publicRouter.get('/rooms', async (req, res, next) => {
+  try {
+    res.json(
+      await db.room.findMany({
+        where: req.query.branchId ? { branchId: String(req.query.branchId) } : {},
+        include: { branch: true },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST: Submit a new review for a branch (requires authentication)
+publicRouter.post('/reviews', auth, async (req: AuthRequest, res, next) => {
+  try {
+    const v = z
+      .object({
+        branchId: z.string(),
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().min(3),
+      })
+      .parse(req.body);
+
+    res.status(201).json(
+      await db.review.create({
+        data: { ...v, userId: req.user!.id },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
