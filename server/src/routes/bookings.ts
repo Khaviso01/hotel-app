@@ -59,7 +59,7 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
     const start = new Date(v.checkIn);
     const end = new Date(v.checkOut);
 
-    / Validate that dates are valid timestamp numbers, check-out follows check-in, and dates are in the future
+    // Validate that dates are valid timestamp numbers, check-out follows check-in, and dates are in the future
     if (
       !Number.isFinite(+start) ||
       !Number.isFinite(+end) ||
