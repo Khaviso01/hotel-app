@@ -106,3 +106,18 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
       },
       include,
     });
+
+    // Create an in-app notification confirming receipt of the booking request
+    await db.notification.create({
+      data: {
+        userId: req.user!.id,
+        title: 'Booking request received',
+        message: 'Your booking ' + booking.reference + ' is awaiting confirmation.',
+      },
+    });
+
+    res.status(201).json(booking);
+  } catch (e) {
+    next(e);
+  }
+});
