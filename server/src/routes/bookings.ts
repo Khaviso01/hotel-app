@@ -58,3 +58,13 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
     const v = schema.parse(req.body);
     const start = new Date(v.checkIn);
     const end = new Date(v.checkOut);
+
+    / Validate that dates are valid timestamp numbers, check-out follows check-in, and dates are in the future
+    if (
+      !Number.isFinite(+start) ||
+      !Number.isFinite(+end) ||
+      end <= start ||
+      start < new Date(new Date().toDateString())
+    ) {
+      return res.status(400).json({ error: 'Choose valid future dates' });
+    }
