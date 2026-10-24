@@ -75,3 +75,37 @@ publicRouter.post('/reviews', auth, async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve all favourite branches for the authenticated user
+publicRouter.get('/favourites', auth, async (req: AuthRequest, res, next) => {
+  try {
+    res.json(
+      await db.favourite.findMany({
+        where: { userId: req.user!.id },
+        include: { branch: { include: { rooms: true } } },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST: Add a branch to the authenticated user's favourites (upsert)
+publicRouter.post('/favourites/:branchId', auth, async (req: AuthRequest, res, next) => {
+  try {
+    res.status(201).json(
+      await db.favourite.upsert({
+        where: {
+          userId_branchId: {
+            userId: req.user!.id,
+            branchId: req.params.branchId,
+          },
+        },
+        create: { userId: req.user!.id, branchId: req.params.branchId },
+        update: {},
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
