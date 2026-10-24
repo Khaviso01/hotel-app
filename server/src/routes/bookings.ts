@@ -51,3 +51,10 @@ bookingRouter.get('/:id', async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
+
+// POST: Create a new room booking with date validation, availability checks, and overlap prevention
+bookingRouter.post('/', async (req: AuthRequest, res, next) => {
+  try {
+    const v = schema.parse(req.body);
+    const start = new Date(v.checkIn);
+    const end = new Date(v.checkOut);
