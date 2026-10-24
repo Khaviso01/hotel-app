@@ -33,3 +33,21 @@ bookingRouter.get('/', async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
+
+// GET: Retrieve a specific booking by ID for the authenticated user
+bookingRouter.get('/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const item = await db.booking.findFirst({
+      where: { id: req.params.id, userId: req.user!.id },
+      include,
+    });
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    
+    res.json(item);
+  } catch (e) {
+    next(e);
+  }
+});
