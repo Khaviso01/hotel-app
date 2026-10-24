@@ -121,3 +121,14 @@ bookingRouter.post('/', async (req: AuthRequest, res, next) => {
     next(e);
   }
 });
+
+// PATCH: Modify check-in and check-out dates for an existing pending booking
+bookingRouter.patch('/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const v = z.object({ checkIn: z.string(), checkOut: z.string() }).parse(req.body);
+
+    // Ensure the booking exists, belongs to the user, and is currently in pending status
+    const existing = await db.booking.findFirst({
+      where: { id: req.params.id, userId: req.user!.id, status: 'PENDING' },
+      include: { room: true },
+    });
