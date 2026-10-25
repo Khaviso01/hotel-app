@@ -157,3 +157,80 @@ export function MobileNav() {
     </nav>
   );
 }
+
+// Standard layout wrapper for guest-facing pages.
+export function GuestLayout({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <Header />
+      <main>{children}</main>
+      <MobileNav />
+      <footer className="footer">
+        <div className="container">
+          <Logo light />
+          <p>Where comfort meets nature. © {new Date().getFullYear()} The Retreat.</p>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+// Administrative dashboard layout wrapper with collapsible sidebar and navigation links.
+export function AdminLayout({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const [open, setOpen] = useState(false);
+
+  const links = [
+    ['/admin', 'Dashboard'],
+    ['/admin/rooms', 'Manage Rooms'],
+    ['/admin/bookings', 'Manage Bookings'],
+    ['/admin/branches', 'Manage Branches'],
+    ['/admin/users', 'Users'],
+    ['/admin/reviews', 'Reviews'],
+    ['/admin/notifications', 'Notifications'],
+    ['/admin/reports', 'Reports'],
+    ['/admin/settings', 'Settings'],
+  ];
+
+  return (
+    <div className="admin-shell">
+      <aside className={'admin-sidebar ' + (open ? 'open' : '')}>
+        <Logo light />
+        {links.map(([url, name]) => (
+          <NavLink
+            end={url === '/admin'}
+            key={url}
+            to={url}
+            onClick={() => setOpen(false)}
+          >
+            {name}
+          </NavLink>
+        ))}
+        <button
+          onClick={() => {
+            localStorage.removeItem('retreat_token');
+            dispatch(setUser(null));
+            navigate('/auth');
+          }}
+        >
+          <LogOut size={17} /> Sign Out
+        </button>
+      </aside>
+      <div className="admin-main">
+        <header className="admin-top">
+          <button
+            className="icon-button"
+            onClick={() => setOpen(!open)}
+            aria-label="Toggle sidebar"
+          >
+            <Menu />
+          </button>
+          <span>Administration</span>
+          <Link to="/">Guest App ↗</Link>
+        </header>
+        <div className="admin-content">{children}</div>
+      </div>
+    </div>
+  );
+}
