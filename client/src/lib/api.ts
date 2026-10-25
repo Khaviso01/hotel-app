@@ -63,3 +63,14 @@ export type Booking = {
   room: Room & { branch: Branch };
   user?: { name: string; email: string };
 };
+
+// Currency formatting helper for South African Rand (ZAR)
+export const money = (n: number) => 'R' + n.toLocaleString('en-ZA');
+
+// Date formatting helper for localized date display
+export const dateText = (s: string) =>
+  new Date(s).toLocaleDateString('en-ZA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
