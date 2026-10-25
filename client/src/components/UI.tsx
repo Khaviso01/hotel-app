@@ -73,3 +73,87 @@ export function Modal({
     </div>
   );
 }
+
+// Toast notification banner that auto-dismisses after 4 seconds or via manual close.
+export function Toast() {
+  const toast = useSelector((s: RootState) => s.toast);
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (!toast.message) return;
+    const timer = setTimeout(() => dispatch(hideToast()), 4000);
+    return () => clearTimeout(timer);
+  }, [toast.message, dispatch]);
+
+  return toast.message ? (
+    <div className={'toast ' + toast.kind} role="status">
+      {toast.message}
+      <button onClick={() => dispatch(hideToast())} aria-label="Dismiss">
+        <X size={16} />
+      </button>
+    </div>
+  ) : null;
+}
+
+// Site Header component with responsive mobile navigation and authentication state links
+export function Header() {
+  const user = useSelector((s: RootState) => s.auth.user);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="site-header">
+      <div className="container header-inner">
+        <Logo />
+        <button
+          className="icon-button mobile-menu"
+          onClick={() => setOpen(!open)}
+          aria-label="Toggle menu"
+        >
+          {open ? <X /> : <Menu />}
+        </button>
+        <nav className={open ? 'nav open' : 'nav'} onClick={() => setOpen(false)}>
+          <NavLink to="/">Home</NavLink>
+          <NavLink to="/branches">Our Branches</NavLink>
+          <NavLink to="/bookings">My Bookings</NavLink>
+          <NavLink to="/favourites">Favourites</NavLink>
+          <NavLink to="/notifications">
+            <Bell size={18} /> Notifications
+          </NavLink>
+          {user?.role === 'ADMIN' && (
+            <NavLink to="/admin">
+              <ShieldCheck size={18} /> Admin
+            </NavLink>
+          )}
+          <NavLink to={user ? '/profile' : '/auth'}>
+            <UserRound size={18} />
+            {user ? 'Profile' : 'Sign In'}
+          </NavLink>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+// Bottom navigation bar for mobile viewports.
+export function MobileNav() {
+  return (
+    <nav className="bottom-nav">
+      <NavLink to="/">
+        <Home />
+        <span>Home</span>
+      </NavLink>
+      <NavLink to="/bookings">
+        <CalendarDays />
+        <span>Bookings</span>
+      </NavLink>
+      <NavLink to="/favourites">
+        <Heart />
+        <span>Favourites</span>
+      </NavLink>
+      <NavLink to="/profile">
+        <UserRound />
+        <span>Profile</span>
+      </NavLink>
+    </nav>
+  );
+}
