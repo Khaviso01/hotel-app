@@ -29,3 +29,11 @@ export function auth(req: AuthRequest, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'Session expired' });
   }
 }
+
+// Role-based access control middleware to restrict routes to ADMIN users only.
+export function admin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
