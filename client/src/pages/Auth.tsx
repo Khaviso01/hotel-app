@@ -33,3 +33,41 @@ export function AuthPage() {
       setError((e as Error).message);
     }
   }
+
+return (
+    <main className="container">
+      <form className="panel" onSubmit={submit}>
+        <h1>{register ? 'Create account' : 'Sign in'}</h1>
+        {register && (
+          <label>
+            Name
+            <input required value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+        )}
+        <label>
+          Email
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label>
+          Password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <button className="btn btn-primary">{register ? 'Register' : 'Sign in'}</button>
+        <button
+          type="button"
+          className="btn btn-outline"
+          onClick={() => setRegister(!register)}
+        >
+          {register ? 'Already registered? Sign in' : 'Create an account'}
+        </button>
+      </form>
+    </main>
+  );
+}
