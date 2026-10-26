@@ -570,3 +570,141 @@ export function AdminUsers() {
     </>
   );
 }
+
+// Administrative view for moderating and deleting guest reviews.
+export function AdminReviews() {
+  const { data, reload } = useAdmin<
+    { id: string; rating: number; comment: string; user: { name: string }; branch: { name: string } }[]
+  >('/reviews');
+  const dispatch = useDispatch();
+  const [target, setTarget] = useState<string | null>(null);
+
+  async function remove() {
+    try {
+      await api('/admin/reviews/' + target, { method: 'DELETE' });
+      dispatch(showToast({ message: 'Review deleted' }));
+      setTarget(null);
+      reload();
+    } catch (e) {
+      dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
+    }
+  }
+
+  return (
+    <>
+      <Heading title="Reviews" />
+      {data?.map((r) => (
+        <div className="panel review-admin" key={r.id}>
+          <div>
+            <strong>
+              {r.user.name}
+              {r.rating} ★
+            </strong>
+            <p>{r.branch.name}</p>
+            <p>{r.comment}</p>
+          </div>
+          <Button variant="danger" onClick={() => setTarget(r.id)}>
+            Delete
+          </Button>
+        </div>
+      ))}
+      {target && (
+        <Modal title="Delete Review?" onClose={() => setTarget(null)}>
+          <p>Remove this guest review permanently?</p>
+          <Button variant="danger" onClick={remove}>
+            Delete Review
+          </Button>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// Administrative view for broadcasting notifications to all users.
+export function AdminNotifications() {
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const dispatch = useDispatch();
+
+  async function send(e: FormEvent) {
+    e.preventDefault();
+    try {
+      const r = await api<{ sent: number }>('/admin/notifications', {
+        method: 'POST',
+        body: JSON.stringify({ title, message }),
+      });
+      dispatch(showToast({ message: 'Notification sent to ' + r.sent + ' users' }));
+      setTitle('');
+      setMessage('');
+    } catch (e) {
+      dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
+    }
+  }
+
+  return (
+    <>
+      <Heading title="Send Notifications" />
+      <form className="panel stack" onSubmit={send}>
+        <label>
+          Title
+          <input required value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label>
+          Message
+          <textarea required value={message} onChange={(e) => setMessage(e.target.value)} />
+        </label>
+        <Button type="submit">Send to All Users</Button>
+      </form>
+    </>
+  );
+}
+
+// Reports and analytics dashboard view.
+export function Reports() {
+  const { data } = useAdmin<{
+    bookings: number;
+    revenue: number;
+    rooms: number;
+    branches: number;
+    users: number;
+  }>('/stats');
+
+  return (
+    <>
+      <Heading title="Reports & Analytics" />
+      <div className="metric-grid">
+        {[
+          ['Bookings', data?.bookings],
+          ['Confirmed Revenue', money(data?.revenue || 0)],
+          ['Rooms', data?.rooms],
+          ['Branches', data?.branches],
+        ].map(([k, v]) => (
+          <div className="metric" key={k as string}>
+            <span>{k}</span>
+            <strong>{v ?? '—'}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="muted">These figures are calculated from your PostgreSQL database.</p>
+    </>
+  );
+}
+
+// Administrative settings overview and documentation view.
+export function Settings() {
+  return (
+    <>
+      <Heading title="Settings" />
+      <div className="panel stack">
+        <h3>Hotel Administration</h3>
+        <p>
+          Manage branches, room availability, booking approvals and guest notifications using the navigation
+          menu.
+        </p>
+        <p className="small">
+          For production, configure HTTPS, backups, a payment provider, email delivery and OAuth credentials.
+        </p>
+      </div>
+    </>
+  );
+}
