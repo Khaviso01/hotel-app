@@ -175,3 +175,79 @@ export function AdminRooms() {
     </>
   );
 }
+
+// Custom hook to fetch public branch and room listings.
+function usePublicBranches() {
+  const [data, setData] = useState<Branch[]>([]);
+
+  useEffect(() => {
+    api<Branch[]>('/branches')
+      .then(setData)
+      .catch(() => {});
+  }, []);
+
+  return { data };
+}
+
+// Form component for creating or editing individual hotel rooms.
+export function RoomForm() {
+  const { id } = useParams();
+  const editing = Boolean(id);
+  const { data: branches } = usePublicBranches();
+  const existing = branches.flatMap((b) => b.rooms).find((r) => r.id === id);
+
+  const [form, setForm] = useState({
+    branchId: '',
+    name: '',
+    type: 'Deluxe',
+    description: '',
+    capacity: 2,
+    price: 1850,
+    available: true,
+    image: '',
+  });
+  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (existing) {
+      setForm({
+        branchId: existing.branchId,
+        name: existing.name,
+        type: existing.type,
+        description: existing.description,
+        capacity: existing.capacity,
+        price: existing.price,
+        available: existing.available,
+        image: existing.image,
+      });
+    } else if (branches[0] && !form.branchId) {
+      setForm((f) => ({ ...f, branchId: branches[0].id }));
+    }
+  }, [existing, branches]);
+
+  function update(key: string, value: any) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api('/admin/rooms' + (editing ? '/' + id : ''), {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(form),
+      });
+      dispatch(
+        showToast({
+          message: editing ? 'Room updated successfully' : 'Room added successfully',
+        })
+      );
+      navigate('/admin/rooms');
+    } catch (e) {
+      dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
+    } finally {
+      setBusy(false);
+    }
+  }
