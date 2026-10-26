@@ -251,3 +251,88 @@ export function RoomForm() {
       setBusy(false);
     }
   }
+
+   return (
+    <>
+      <Heading title={editing ? 'Edit Room' : 'Add New Room'} />
+      <form className="panel stack" onSubmit={submit}>
+        <div className="form-grid">
+          <label>
+            Branch
+            <select
+              value={form.branchId}
+              required
+              onChange={(e) => update('branchId', e.target.value)}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Room Name
+            <input required value={form.name} onChange={(e) => update('name', e.target.value)} />
+          </label>
+          <label>
+            Room Type
+            <select value={form.type} onChange={(e) => update('type', e.target.value)}>
+              {['Deluxe', 'Executive', 'Family', 'Suite', 'Villa'].map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Capacity
+            <input
+              type="number"
+              min="1"
+              value={form.capacity}
+              onChange={(e) => update('capacity', Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Price per Night (R)
+            <input
+              type="number"
+              min="1"
+              value={form.price}
+              onChange={(e) => update('price', Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Availability
+            <select
+              value={String(form.available)}
+              onChange={(e) => update('available', e.target.value === 'true')}
+            >
+              <option value="true">Available</option>
+              <option value="false">Unavailable</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Description
+          <textarea
+            value={form.description}
+            onChange={(e) => update('description', e.target.value)}
+          />
+        </label>
+        <label>
+          Room Image URL
+          <input type="url" required value={form.image} onChange={(e) => update('image', e.target.value)} />
+        </label>
+        {form.image && <img className="form-preview" src={form.image} alt="Room preview" />}
+        <div className="actions">
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Saving...' : editing ? 'Save Changes' : 'Save Room'}
+          </Button>
+          <Link className="btn btn-outline" to="/admin/rooms">
+            Cancel
+          </Link>
+        </div>
+      </form>
+    </>
+  );
+}
