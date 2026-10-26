@@ -443,3 +443,130 @@ export function AdminBookings() {
     </>
   );
 }
+
+// Administrative view for managing hotel branches.
+export function AdminBranches() {
+  const { data } = usePublicBranches();
+
+  return (
+    <>
+      <Heading
+        title="Manage Branches"
+        action={
+          <Link className="btn btn-primary" to="/admin/branches/new">
+            + Add Branch
+          </Link>
+        }
+      />
+      <div className="card-grid">
+        {data.map((b) => (
+          <article className="branch-card" key={b.id}>
+            <img src={b.image} alt={b.name} />
+            <div className="branch-info">
+              <h3>{b.name}</h3>
+              <p>{b.address}</p>
+              <p>{b.rooms.length} rooms</p>
+              <Link className="btn btn-outline" to={'/admin/branches/' + b.id + '/edit'}>
+                Edit Branch
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Form component for creating or editing hotel branches.
+export function BranchForm() {
+  const { id } = useParams();
+  const { data } = usePublicBranches();
+  const existing = data.find((b) => b.id === id);
+  const editing = !!id;
+
+  const [form, setForm] = useState({
+    name: '',
+    city: '',
+    address: '',
+    description: '',
+    image: '',
+  });
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (existing) {
+      setForm({
+        name: existing.name,
+        city: existing.city,
+        address: existing.address,
+        description: existing.description,
+        image: existing.image,
+      });
+    }
+  }, [existing]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api('/admin/branches' + (editing ? '/' + id : ''), {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(form),
+      });
+      dispatch(showToast({ message: editing ? 'Branch updated' : 'Branch created' }));
+      navigate('/admin/branches');
+    } catch (e) {
+      dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
+    }
+  }
+
+  return (
+    <>
+      <Heading title={editing ? 'Edit Branch' : 'Add Branch'} />
+      <form className="panel stack" onSubmit={submit}>
+        {(Object.keys(form) as (keyof typeof form)[]).map((k) => (
+          <label key={k}>
+            {k.charAt(0).toUpperCase() + k.slice(1)}
+            <input
+              required
+              value={form[k]}
+              onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+            />
+          </label>
+        ))}
+        <Button type="submit">Save Branch</Button>
+      </form>
+    </>
+  );
+}
+
+// Administrative view for viewing registered system users.
+export function AdminUsers() {
+  const { data } = useAdmin<{ id: string; name: string; email: string; role: string }[]>('/users');
+
+  return (
+    <>
+      <Heading title="Users" />
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data?.map((u) => (
+              <tr key={u.id}>
+                <td>{u.name}</td>
+                <td>{u.email}</td>
+                <td>{u.role}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
