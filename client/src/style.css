@@ -1,0 +1,301 @@
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1c302a;
+  background: #f7f8f5;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* 2. Layout & Container Utilities */
+
+.container {
+  max-width: 1180px;
+  margin: auto;
+  padding: 24px;
+}
+
+.panel {
+  padding: 22px;
+  border: 1px solid #dde5df;
+  border-radius: 14px;
+  background: #ffffff;
+  margin: 16px 0;
+}
+
+.cards,
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+/* 3. Buttons & Interactive Controls */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #244e3c;
+  text-decoration: none;
+  margin: 4px;
+}
+
+.btn-primary {
+  background: #244e3c;
+  color: #ffffff;
+}
+
+.btn-outline {
+  background: #ffffff;
+  color: #244e3c;
+}
+
+.btn-danger {
+  background: #a32b35;
+  color: #ffffff;
+}
+
+.icon-button {
+  background: transparent;
+  border: 0;
+}
+
+/* 4. Media, Galleries & Hero Section */
+
+.cover {
+  width: 100%;
+  height: 210px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.gallery {
+  display: flex;
+  gap: 12px;
+  overflow: auto;
+}
+
+.gallery img {
+  height: 250px;
+  max-width: 350px;
+  object-fit: cover;
+}
+
+.hero {
+  padding: 80px 24px;
+  text-align: center;
+  background: #dfece3;
+}
+
+.hero h1 {
+  font-size: clamp(32px, 5vw, 60px);
+}
+
+/* 5. Form Controls & Typography Utilities */
+
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd8d0;
+  border-radius: 6px;
+  margin: 8px 0 14px;
+}
+
+label {
+  display: block;
+}
+
+.error {
+  color: #a32b35;
+}
+
+.muted {
+  color: #697b70;
+}
+
+/* 6. Data Tables & Status Badges */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #dce6df;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status {
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #e8eee9;
+}
+
+/* 7. Navigation Header & Branding */
+
+.site-header,
+.header-inner,
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.site-header {
+  background: #ffffff;
+  border-bottom: 1px solid #dde5df;
+}
+
+.header-inner {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.nav {
+  flex-wrap: wrap;
+}
+
+.logo {
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.logo small {
+  display: block;
+  font-size: 9px;
+}
+
+/* 8. Admin Layout & Metrics */
+
+.admin-layout {
+  display: flex;
+}
+
+.admin-sidebar {
+  min-width: 220px;
+}
+
+.admin-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.metric {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 22px;
+}
+
+.metric strong {
+  display: block;
+  font-size: 28px;
+}
+
+/* 9. Modals, Toasts & Footer */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.533);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+
+.modal {
+  background: #ffffff;
+  padding: 24px;
+  max-width: 540px;
+  width: 95%;
+  border-radius: 12px;
+}
+
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  padding: 14px;
+  background: #244e3c;
+  color: #ffffff;
+  z-index: 30;
+}
+
+.footer {
+  text-align: center;
+  padding: 30px;
+}
+
+.mobile-menu {
+  display: none;
+}
+
+/* 10. Responsive Media Queries */
+
+@media (max-width: 760px) {
+  .nav {
+    display: none;
+  }
+
+  .nav.open {
+    display: flex;
+    position: absolute;
+    top: 65px;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    padding: 20px;
+    z-index: 10;
+  }
+
+  .mobile-menu {
+    display: block;
+  }
+
+  .admin-layout {
+    display: block;
+  }
+
+  .admin-sidebar {
+    min-width: 0;
+  }
+
+  .gallery img {
+    height: 160px;
+  }
+}
