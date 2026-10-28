@@ -227,7 +227,11 @@ adminRouter.post('/notifications', async (req, res, next) => {
       .parse(req.body);
     const users = await db.user.findMany({ select: { id: true } });
     await db.notification.createMany({
-      data: users.map((u) => ({ userId: u.id, ...v })),
+      // Map each user to a notification containing their user ID and notification data.
+      data: users.map((u: { id: string }) => ({
+        userId: u.id,
+        ...v,
+      })),
     });
     res.status(201).json({ sent: users.length });
   } catch (e) {

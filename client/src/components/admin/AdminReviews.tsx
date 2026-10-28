@@ -7,98 +7,86 @@ import { showToast } from '../../store';
 import { useAdmin } from './useAdmin';
 import { usePublicBranches } from './usePublicBranches';
 import { Heading } from './Heading';
-export function AdminRooms() {
-  const { data: branches } = usePublicBranches();
+
+// Admin component for viewing and managing guest reviews.
+export function AdminReviews() {
+
+  // Fetch all guest reviews from the admin API and provide a reload function.
+  const { data, reload } = useAdmin<
+    {
+      id: string;
+      rating: number;
+      comment: string;
+      user: { name: string };
+      branch: { name: string };
+    }[]
+  >('/reviews');
+
+  // Initialize Redux dispatch for displaying notifications.
   const dispatch = useDispatch();
-  const navigate = useNavigate();
-  const [remove, setRemove] = useState<Room | null>(null);
-  const [filter, setFilter] = useState('');
 
-  const rooms = branches?.flatMap((b) => b.rooms.map((r) => ({ ...r, branch: b }))) || [];
+  // Store the ID of the review selected for deletion.
+  const [target, setTarget] = useState<string | null>(null);
 
-  async function deleteRoom() {
-    if (!remove) return;
+  // Delete the selected review from the database.
+  async function remove() {
     try {
-      await api('/admin/rooms/' + remove.id, { method: 'DELETE' });
-      dispatch(showToast({ message: 'Room deleted successfully' }));
-      setRemove(null);
-      navigate('/admin/rooms');
-      window.location.reload();
+      // Send a DELETE request to the admin reviews API.
+      await api('/admin/reviews/' + target, { method: 'DELETE' });
+
+      // Display a success notification.
+      dispatch(showToast({ message: 'Review deleted' }));
+
+      // Close the confirmation modal.
+      setTarget(null);
+
+      // Refresh the reviews list after successful deletion.
+      reload();
+
     } catch (e) {
+      // Display an error notification if the deletion fails.
       dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
     }
   }
-  
-  // Custom hook to fetch public branch and room listings.
+
+  // Render the reviews list and delete confirmation modal.
   return (
     <>
-      <Heading
-        title="Manage Rooms"
-        action={
-          <Link className="btn btn-primary" to="/admin/rooms/new">
-            + Add Room
-          </Link>
-        }
-      />
-      <input
-        className="search-input"
-        placeholder="Search rooms..."
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-      />
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Room</th>
-              <th>Branch</th>
-              <th>Type</th>
-              <th>Capacity</th>
-              <th>Price / night</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rooms
-              .filter((r) => (r.name + ' ' + r.branch.city).toLowerCase().includes(filter.toLowerCase()))
-              .map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <div className="table-room">
-                      <img src={r.image} alt="" />
-                      {r.name}
-                    </div>
-                  </td>
-                  <td>{r.branch.city}</td>
-                  <td>{r.type}</td>
-                  <td>{r.capacity}</td>
-                  <td>{money(r.price)}</td>
-                  <td>
-                    <span className={'status ' + (r.available ? 'confirmed' : 'cancelled')}>
-                      {r.available ? 'Available' : 'Unavailable'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="actions">
-                      <Link to={'/admin/rooms/' + r.id + '/edit'}>Edit</Link>
-                      <button className="danger-text" onClick={() => setRemove(r)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-      {remove && (
-        <Modal title="Delete Room?" onClose={() => setRemove(null)}>
-          <p>
-            Permanently delete <strong>{remove.name}</strong>? This cannot be undone.
-          </p>
-          <Button variant="danger" onClick={deleteRoom}>
-            Delete Room
+      {/* Display the page heading. */}
+      <Heading title="Reviews" />
+
+      {/* Loop through all reviews returned by the API. */}
+      {data?.map((r) => (
+        <div className="panel review-admin" key={r.id}>
+          <div>
+            {/* Display the guest name and review rating. */}
+            <strong>
+              {r.user.name}
+              {r.rating} ★
+            </strong>
+
+            {/* Display the hotel branch associated with the review. */}
+            <p>{r.branch.name}</p>
+
+            {/* Display the guest's review comment. */}
+            <p>{r.comment}</p>
+          </div>
+
+          {/* Open the delete confirmation modal for the selected review. */}
+          <Button variant="danger" onClick={() => setTarget(r.id)}>
+            Delete
+          </Button>
+        </div>
+      ))}
+
+      {/* Show the confirmation modal when a review is selected. */}
+      {target && (
+        <Modal title="Delete Review?" onClose={() => setTarget(null)}>
+          <p>Remove this guest review permanently?</p>
+
+          {/* Confirm and permanently delete the selected review. */}
+          <Button variant="danger" onClick={remove}>
+            Delete Review
           </Button>
         </Modal>
       )}

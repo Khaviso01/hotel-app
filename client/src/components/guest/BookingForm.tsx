@@ -1,117 +1,125 @@
-import { useState } from 'react';
-import { useDispatch } from 'react-redux';
-import { api, type Booking, money, dateText } from '../../lib/api';
-import { Button, Modal } from '../UI';
-import { showToast } from '../../store';
-import { useAdmin } from './useAdmin';
-import { Heading } from './Heading';
 
-//  Administrative view for managing guest reservations, filtering by status, approving pending bookings, and cancelling reservations.
-export function AdminBookings() {
-  const { data, error, reload } = useAdmin<Booking[]>('/bookings');
-  const [filter, setFilter] = useState('');
-  const [target, setTarget] = useState<{ booking: Booking; status: string } | null>(null);
-  const dispatch = useDispatch();
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api, type Room } from '../../lib/api';
+import { BookingSummary } from './BookingSummary';
 
-  //  Updates the status of the targeted booking (e.g. CONFIRMED or CANCELLED).
-  async function change() {
-    if (!target) return;
+// Booking form component for reserving a selected hotel room
+export function BookingForm({ room }: { room: Room }) {
+  // Hook for navigating between application pages
+  const navigate = useNavigate();
+
+  // State variables for storing booking information
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [guests, setGuests] = useState(1);
+
+  // State variables for handling errors and submission status
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Calculate the number of nights between check-in and check-out dates
+  const nights =
+    checkIn && checkOut
+      ? Math.max(
+          0,
+          Math.round(
+            (Date.parse(checkOut) - Date.parse(checkIn)) / 86400000
+          )
+        )
+      : 0;
+
+  // Handle booking form submission
+  async function submit(e: FormEvent) {
+    // Prevent the browser from refreshing when the form is submitted
+    e.preventDefault();
+
+    // Clear any previous error messages
+    setError('');
+
+    // Validate that check-out is after check-in
+    if (nights < 1) {
+      setError('Check-out must be after check-in');
+      return;
+    }
+
+    // Disable submission while processing the booking
+    setBusy(true);
+
     try {
-      await api('/admin/bookings/' + target.booking.id, {
-        method: 'PUT',
-        body: JSON.stringify({ status: target.status }),
+      // Send booking information to the backend API
+      await api('/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomId: room.id,
+          checkIn,
+          checkOut,
+          guests,
+        }),
       });
-      dispatch(
-        showToast({
-          message: `Booking ${target.status.toLowerCase()} successfully`,
-        })
-      );
-      setTarget(null);
-      reload();
+
+      // Navigate to the bookings page after successful submission
+      navigate('/bookings');
     } catch (e) {
-      dispatch(showToast({ message: (e as Error).message, kind: 'error' }));
+      // Display an error message if the booking request fails
+      setError((e as Error).message);
+    } finally {
+      // Re-enable the submit button after processing
+      setBusy(false);
     }
   }
 
+  // Render the hotel room reservation form
   return (
-    <>
-      <Heading title="Manage Bookings" />
-      <div className="tabs">
-        {['', 'PENDING', 'CONFIRMED', 'CANCELLED'].map((s) => (
-          <button key={s} className={filter === s ? 'active' : ''} onClick={() => setFilter(s)}>
-            {s || 'All'}
-          </button>
-        ))}
-      </div>
+    <form onSubmit={submit} className="panel">
+      {/* Display the selected room name */}
+      <h2>Reserve {room.name}</h2>
+
+      {/* Check-in date input */}
+      <label>
+        Check in
+        <input
+          type="date"
+          required
+          value={checkIn}
+          onChange={e => setCheckIn(e.target.value)}
+        />
+      </label>
+
+      {/* Check-out date input */}
+      <label>
+        Check out
+        <input
+          type="date"
+          required
+          value={checkOut}
+          onChange={e => setCheckOut(e.target.value)}
+        />
+      </label>
+
+      {/* Number of guests input */}
+      <label>
+        Guests
+        <input
+          type="number"
+          min={1}
+          max={room.capacity}
+          required
+          value={guests}
+          onChange={e => setGuests(Number(e.target.value))}
+        />
+      </label>
+
+      {/* Display the calculated booking price summary */}
+      <BookingSummary price={room.price} nights={nights} />
+
+      {/* Display an error message when booking validation fails */}
       {error && <p className="error">{error}</p>}
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Reference</th>
-              <th>Guest</th>
-              <th>Branch</th>
-              <th>Room</th>
-              <th>Check-in</th>
-              <th>Check-out</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data
-              ?.filter((b) => !filter || b.status === filter)
-              .map((b) => (
-                <tr key={b.id}>
-                  <td>{b.reference}</td>
-                  <td>{b.user?.name}</td>
-                  <td>{b.room.branch.city}</td>
-                  <td>{b.room.name}</td>
-                  <td>{dateText(b.checkIn)}</td>
-                  <td>{dateText(b.checkOut)}</td>
-                  <td>{money(b.total)}</td>
-                  <td>
-                    <span className={'status ' + b.status.toLowerCase()}>{b.status}</span>
-                  </td>
-                  <td>
-                    <div className="actions">
-                      {b.status === 'PENDING' && (
-                        <button onClick={() => setTarget({ booking: b, status: 'CONFIRMED' })}>
-                          Approve
-                        </button>
-                      )}
-                      {b.status !== 'CANCELLED' && (
-                        <button
-                          className="danger-text"
-                          onClick={() => setTarget({ booking: b, status: 'CANCELLED' })}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-      {target && (
-        <Modal
-          title={target.status === 'CONFIRMED' ? 'Approve Booking?' : 'Cancel Booking?'}
-          onClose={() => setTarget(null)}
-        >
-          <p>
-            Update reservation <strong>{target.booking.reference}</strong> to {target.status.toLowerCase()}?
-          </p>
-          <Button
-            variant={target.status === 'CANCELLED' ? 'danger' : 'primary'}
-            onClick={change}
-          >
-            Confirm Action
-          </Button>
-        </Modal>
-      )}
-    </>
+
+      {/* Submit the reservation and prevent duplicate submissions */}
+      <button className="btn btn-primary" disabled={busy}>
+        {busy ? 'Submitting…' : 'Confirm booking'}
+      </button>
+    </form>
   );
 }

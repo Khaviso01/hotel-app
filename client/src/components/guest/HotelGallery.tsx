@@ -1,10 +1,25 @@
-// Hotel facilities and information section component displaying general property guidelines and policy confirmation notes for guests.  
-
-export function HotelFacilities() {
+// Hotel gallery component that displays images of a hotel.
+export function HotelGallery({
+  images,
+  name,
+}: {
+  images: string[];
+  name: string;
+}) {
+  // Render the hotel gallery.
   return (
-    <section className="panel">
-      <h2>Hotel information</h2>
-      <p>Explore the room descriptions and confirm available facilities and policies with the property before booking.</p>
-    </section>
+    <div className="gallery">
+      {/* Filter out empty image values and display each valid image. */}
+      {images
+        .filter(Boolean)
+        .map((src, i) => (
+          <img
+            key={i}
+            src={src}
+            alt={`${name} photo ${i + 1}`}
+            loading="lazy"
+          />
+        ))}
+    </div>
   );
 }
