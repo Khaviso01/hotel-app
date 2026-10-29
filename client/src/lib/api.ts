@@ -1,5 +1,73 @@
-// One API helper keeps authentication and error handling consistent.
-export async function api<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'guest' | 'admin';
+};
+
+export type Branch = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  description: string;
+  image: string;
+  rating: number;
+  amenities: string[];
+};
+
+export type Room = {
+  id: string;
+  branchId: string;
+  name: string;
+  type: string;
+  capacity: number;
+  price: number;
+  available: boolean;
+  image: string;
+  description: string;
+};
+
+export type Booking = {
+  id: string;
+  userId: string;
+  roomId: string;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  total: number;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  createdAt: string;
+};
+
+export type Notice = {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+};
+
+export type Stats = {
+  bookings: number;
+  revenue: number;
+  branches: number;
+  rooms: number;
+  users: number;
+  occupancy: number;
+};
+
+/**
+ * Formats a numerical amount into a South African Rand (ZAR) currency string.
+ */
+export const money = (amount: number) => 'R' + amount.toLocaleString('en-ZA');
+
+/**
+ * Generic API fetch client configured with automatic JWT bearer token header injection
+ * and robust error parsing for backend responses.
+ */
+export const api = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
   const token = localStorage.getItem('retreat_token');
   const response = await fetch('/api' + path, {
     ...options,
@@ -9,68 +77,16 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
       ...options.headers,
     },
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || 'Request failed');
-  }
-
-  if (response.status === 204) return undefined as T;
-  return response.json();
-}
-
-// Room entity type definition matching the backend schema
-export type Room = {
-  id: string;
-  branchId: string;
-  name: string;
-  type: string;
-  description: string;
-  capacity: number;
-  price: number;
-  available: boolean;
-  image: string;
-  branch?: Branch;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+  return data as T;
 };
 
-// Branch entity type definition with related rooms and reviews
-export type Branch = {
-  id: string;
-  name: string;
-  city: string;
-  address: string;
-  description: string;
-  image: string;
-  rating: number;
-  rooms: Room[];
-  reviews?: {
-    id: string;
-    rating: number;
-    comment: string;
-    user: { name: string };
-  }[];
-};
-
-// Booking entity type definition with associated room, branch, and user details
-export type Booking = {
-  id: string;
-  reference: string;
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED';
-  checkIn: string;
-  checkOut: string;
-  guests: number;
-  total: number;
-  room: Room & { branch: Branch };
-  user?: { name: string; email: string };
-};
-
-// Currency formatting helper for South African Rand (ZAR)
-export const money = (n: number) => 'R' + n.toLocaleString('en-ZA');
-
-// Date formatting helper for localized date display
-export const dateText = (s: string) =>
-  new Date(s).toLocaleDateString('en-ZA', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
+/**
+ * Helper wrapper for sending HTTP mutation requests (POST, PATCH, DELETE, PUT) with optional JSON bodies.
+ */
+export const send = <T>(path: string, method: string, body?: unknown) =>
+  api<T>(path, {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });

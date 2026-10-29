@@ -1,6 +1,3 @@
-import { Header } from '../UI';
-
-// Navigation bar component for the guest-facing portal, wrapping the shared Header component.
-export function GuestNavbar() {
-  return <Header />;
-}
+// GuestNavbar is a reusable guest-facing component.
+// This module provides a clear import path for future changes.
+export { ProfileLinks as GuestNavbar } from "./GuestComponents";

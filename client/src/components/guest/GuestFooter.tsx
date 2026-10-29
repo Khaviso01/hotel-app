@@ -1,8 +1,3 @@
-//  Footer component for the guest-facing pages, displaying the current year and location of The Retreat.
-export function GuestFooter() {
-  return (
-    <footer className="footer">
-      <p>© {new Date().getFullYear()} The Retreat · South Africa</p>
-    </footer>
-  );
-}
+// GuestFooter is a reusable guest-facing component.
+// This module provides a clear import path for future changes.
+export { ProfileLinks as GuestFooter } from "./GuestComponents";

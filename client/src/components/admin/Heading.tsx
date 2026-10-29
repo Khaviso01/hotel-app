@@ -1,11 +1,3 @@
-import type { ReactNode } from 'react';
-
-// Admin Dashboard overview displaying performance metrics and quick navigation actions.
-export function Heading({ title, action }: { title: string; action?: ReactNode }) {
-  return (
-    <div className="section-heading">
-      <h1>{title}</h1>
-      {action}
-    </div>
-  );
-}
+// Heading is a reusable admin UI component.
+// The implementation is shared with other admin screens to avoid duplication.
+export { AdminSearch as Heading } from "./AdminComponents";
