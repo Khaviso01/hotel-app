@@ -1,240 +1,233 @@
+
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db } from '../lib/db.js';
-import { auth, admin, type AuthRequest } from '../middleware/auth.js';
+import type { Room } from '../models/types.js';
+import { roomImages } from '../services/seed.js';
+import { db, save } from '../services/database.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { handle, publicUser } from '../controllers/helpers.js';
 
-// Initialize admin router and protect all routes with authentication and admin role checks
-export const adminRouter = Router();
-adminRouter.use(auth, admin);
+// Initialize the Express router for admin operations.
+const router = Router();
 
-// Validation schema for creating and updating rooms
-const roomSchema = z.object({
-  branchId: z.string(),
-  name: z.string().min(2),
-  type: z.string().min(2),
-  description: z.string().default(''),
-  capacity: z.number().int().min(1),
-  price: z.number().int().min(1),
-  available: z.boolean(),
-  image: z.string().url(),
-});
+// All routes below require authentication and admin authorization.
 
-// Validation schema for creating and updating branches
-const branchSchema = z.object({
-  name: z.string().min(2),
-  city: z.string().min(2),
-  address: z.string().min(2),
-  description: z.string(),
-  image: z.string().url(),
-});
-
-// GET: Retrieve overall dashboard statistics and total confirmed revenue
-adminRouter.get('/stats', async (_req, res, next) => {
-  try {
-    const [bookings, rooms, branches, users, revenue] = await Promise.all([
-      db.booking.count(),
-      db.room.count(),
-      db.branch.count(),
-      db.user.count(),
-      db.booking.aggregate({
-        where: { status: 'CONFIRMED' },
-        _sum: { total: true },
-      }),
-    ]);
+// GET: Retrieve dashboard statistics, including bookings, revenue, and occupancy.
+router.get(
+  '/stats',
+  requireAuth,
+  requireAdmin,
+  (_req, res) => {
     res.json({
-      bookings,
-      rooms,
-      branches,
-      users,
-      revenue: revenue._sum.total || 0,
+      bookings: db.bookings.length,
+      revenue: db.bookings
+        .filter(b => b.status === 'confirmed')
+        .reduce((s, b) => s + b.total, 0),
+      branches: db.branches.length,
+      rooms: db.rooms.length,
+      users: db.users.length,
+      occupancy: db.rooms.length
+        ? Math.round(
+            db.bookings.filter(b => b.status === 'confirmed').length /
+            db.rooms.length * 100
+          )
+        : 0
     });
-  } catch (e) {
-    next(e);
   }
-});
+);
 
-// GET: Retrieve all bookings with nested room, branch, and user details
-adminRouter.get('/bookings', async (_req, res, next) => {
-  try {
-    res.json(
-      await db.booking.findMany({
-        include: {
-          room: { include: { branch: true } },
-          user: { select: { id: true, name: true, email: true } },
-        },
-        orderBy: { createdAt: 'desc' },
+// GET: Retrieve all registered users without exposing sensitive information.
+router.get(
+  '/users',
+  requireAuth,
+  requireAdmin,
+  (_req, res) => {
+    res.json(db.users.map(publicUser));
+  }
+);
+
+// POST: Create a new hotel room.
+router.post(
+  '/rooms',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Validate the submitted room information.
+    const v = z.object({
+      branchId: z.string(),
+      name: z.string().min(2),
+      type: z.string().min(2),
+      capacity: z.number().int().positive(),
+      price: z.number().positive(),
+      available: z.boolean(),
+      image: z.string().optional(),
+      description: z.string().optional()
+    }).parse(req.body);
+
+    // Ensure the selected hotel branch exists.
+    if (!db.branches.some(b => b.id === v.branchId))
+      throw Error('Unknown branch.');
+
+    // Create the room with a unique ID and default optional values.
+    const room: Room = {
+      id: crypto.randomUUID(),
+      ...v,
+      image: v.image || roomImages[0],
+      description: v.description || ''
+    };
+
+    // Save the new room and return its details.
+    db.rooms.push(room);
+    save();
+
+    res.status(201).json(room);
+  })
+);
+
+// PATCH: Update an existing hotel's room information.
+router.patch(
+  '/rooms/:id',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Find the room using its ID.
+    const r = db.rooms.find(r => r.id === req.params.id);
+
+    if (!r)
+      throw Error('Room not found.');
+
+    // Validate only the fields provided for updating.
+    const v = z.object({
+      branchId: z.string().optional(),
+      name: z.string().min(2).optional(),
+      type: z.string().min(2).optional(),
+      capacity: z.number().int().positive().optional(),
+      price: z.number().positive().optional(),
+      available: z.boolean().optional(),
+      image: z.string().optional(),
+      description: z.string().optional()
+    }).parse(req.body);
+
+    // Apply changes and save the updated room.
+    Object.assign(r, v);
+    save();
+
+    res.json(r);
+  })
+);
+
+// DELETE: Remove a room if it has no active bookings.
+router.delete(
+  '/rooms/:id',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Prevent deletion when the room has bookings that are not cancelled.
+    if (
+      db.bookings.some(
+        b => b.roomId === req.params.id && b.status !== 'cancelled'
+      )
+    )
+      throw Error('Cancel active bookings before deleting this room.');
+
+    // Remove the room and save the changes.
+    db.rooms = db.rooms.filter(r => r.id !== req.params.id);
+    save();
+
+    res.json({ ok: true });
+  })
+);
+
+// POST: Add a new hotel branch.
+router.post(
+  '/branches',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Validate the new branch information.
+    const v = z.object({
+      name: z.string(),
+      city: z.string(),
+      address: z.string(),
+      description: z.string(),
+      image: z.string(),
+      rating: z.number().min(0).max(5),
+      amenities: z.array(z.string())
+    }).parse(req.body);
+
+    // Generate a unique branch ID.
+    const b = {
+      id: crypto.randomUUID(),
+      ...v
+    };
+
+    // Store the branch and return the created record.
+    db.branches.push(b);
+    save();
+
+    res.status(201).json(b);
+  })
+);
+
+// PATCH: Update an existing hotel branch.
+router.patch(
+  '/branches/:id',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Find the branch using its ID.
+    const b = db.branches.find(b => b.id === req.params.id);
+
+    if (!b)
+      throw Error('Branch not found.');
+
+    // Apply the submitted changes to the branch.
+    Object.assign(b, req.body);
+    save();
+
+    res.json(b);
+  })
+);
+
+// POST: Send notifications to a specific user or all guest users.
+router.post(
+  '/notifications',
+  requireAuth,
+  requireAdmin,
+  handle((req, res) => {
+    // Validate the notification details.
+    const v = z.object({
+      title: z.string(),
+      message: z.string(),
+      userId: z.string().optional()
+    }).parse(req.body);
+
+    // Determine whether to notify one user or all guests.
+    const targets = v.userId
+      ? [v.userId]
+      : db.users
+          .filter(u => u.role === 'guest')
+          .map(u => u.id);
+
+    // Create a notification record for each selected user.
+    targets.forEach(userId =>
+      db.notices.push({
+        id: crypto.randomUUID(),
+        userId,
+        title: v.title,
+        message: v.message,
+        read: false,
+        createdAt: new Date().toISOString()
       })
     );
-  } catch (e) {
-    next(e);
-  }
-});
 
-// PATCH: Update booking status and send a notification to the user
-adminRouter.patch('/bookings/:id', async (req, res, next) => {
-  try {
-    const data = z
-      .object({
-        status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED']),
-      })
-      .parse(req.body);
-    const booking = await db.booking.update({
-      where: { id: req.params.id },
-      data,
-    });
-    await db.notification.create({
-      data: {
-        userId: booking.userId,
-        title: 'Booking updated',
-        message: 'Your booking ' + booking.reference + ' is ' + data.status.toLowerCase(),
-      },
-    });
-    res.json(booking);
-  } catch (e) {
-    next(e);
-  }
-});
+    // Save notifications and return the number of recipients.
+    save();
 
-// POST: Create a new room with validated request body
-adminRouter.post('/rooms', async (req, res, next) => {
-  try {
-    res.status(201).json(
-      await db.room.create({
-        data: roomSchema.parse(req.body),
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
+    res.json({ sent: targets.length });
+  })
+);
 
-// PUT: Update an existing room by ID
-adminRouter.put('/rooms/:id', async (req, res, next) => {
-  try {
-    res.json(
-      await db.room.update({
-        where: { id: req.params.id },
-        data: roomSchema.parse(req.body),
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE: Remove a room (prevents deletion if active, non-cancelled bookings exist)
-adminRouter.delete('/rooms/:id', async (req, res, next) => {
-  try {
-    const count = await db.booking.count({
-      where: { roomId: req.params.id, status: { not: 'CANCELLED' } },
-    });
-    if (count) return res.status(409).json({ error: 'Cancel or reassign active bookings first' });
-    await db.room.delete({ where: { id: req.params.id } });
-    res.status(204).end();
-  } catch (e) {
-    next(e);
-  }
-});
-
-// POST: Create a new branch with validated request body
-adminRouter.post('/branches', async (req, res, next) => {
-  try {
-    res.status(201).json(
-      await db.branch.create({
-        data: branchSchema.parse(req.body),
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
-
-// PUT: Update an existing branch by ID
-adminRouter.put('/branches/:id', async (req, res, next) => {
-  try {
-    res.json(
-      await db.branch.update({
-        where: { id: req.params.id },
-        data: branchSchema.parse(req.body),
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE: Remove a branch (prevents deletion if associated rooms have active reservations)
-adminRouter.delete('/branches/:id', async (req, res, next) => {
-  try {
-    const active = await db.booking.count({
-      where: { room: { branchId: req.params.id }, status: { not: 'CANCELLED' } },
-    });
-    if (active) return res.status(409).json({ error: 'Branch has active reservations' });
-    await db.branch.delete({ where: { id: req.params.id } });
-    res.status(204).end();
-  } catch (e) {
-    next(e);
-  }
-});
-
-// GET: Retrieve a list of all registered users (limited fields)
-adminRouter.get('/users', async (_req, res, next) => {
-  try {
-    res.json(
-      await db.user.findMany({
-        select: { id: true, name: true, email: true, role: true, createdAt: true },
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
-
-// GET: Retrieve all reviews including associated user and branch names
-adminRouter.get('/reviews', async (_req, res, next) => {
-  try {
-    res.json(
-      await db.review.findMany({
-        include: {
-          user: { select: { name: true } },
-          branch: { select: { name: true } },
-        },
-      })
-    );
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE: Remove a specific review by ID
-adminRouter.delete('/reviews/:id', async (req, res, next) => {
-  try {
-    await db.review.delete({ where: { id: req.params.id } });
-    res.status(204).end();
-  } catch (e) {
-    next(e);
-  }
-});
-
-// POST: Broadcast a notification message to all registered users
-adminRouter.post('/notifications', async (req, res, next) => {
-  try {
-    const v = z
-      .object({
-        title: z.string().min(2),
-        message: z.string().min(2),
-      })
-      .parse(req.body);
-    const users = await db.user.findMany({ select: { id: true } });
-    await db.notification.createMany({
-      // Map each user to a notification containing their user ID and notification data.
-      data: users.map((u: { id: string }) => ({
-        userId: u.id,
-        ...v,
-      })),
-    });
-    res.status(201).json({ sent: users.length });
-  } catch (e) {
-    next(e);
-  }
-});
+// Export the admin router for use in the main Express application.
+export default router;

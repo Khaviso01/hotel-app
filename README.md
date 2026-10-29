@@ -1,19 +1,22 @@
 # The Retreat Hotels & Resorts
 
-A hotel booking application with a React guest interface, an admin dashboard, an Express API, and a PostgreSQL database.
+A full-stack hotel booking demo featuring a React guest website, an admin dashboard, and a Node.js/Express API. The project uses TypeScript on both sides and saves development data in a local JSON file.
 
 ## Tech stack
 
-- **Frontend:** React 18, TypeScript, Vite, React Router, Redux Toolkit, Lucide.
-- **Backend:** Node.js, TypeScript, Express, Zod, JWT, bcryptjs, Helmet, CORS.
-- **Database:** PostgreSQL with Prisma ORM.
-- **Tooling:** npm workspaces; client and server share the root install and scripts.
+| Area | Technologies |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, React Router, Context API, CSS, Lucide React |
+| Backend | Node.js, Express, TypeScript, Zod, JWT, bcryptjs, CORS, dotenv |
+| Storage | Local `data.json` file, initialized from `server/src/services/seed.ts` |
+| Tooling | npm, tsx, TypeScript, concurrently |
+
+> This version does **not** use PostgreSQL, Prisma, Redux Toolkit, OAuth, or live payment processing.
 
 ## Requirements
 
-- Git
-- Node.js LTS and npm
-- PostgreSQL (local or hosted), with permission to create/use a database
+- Node.js 20 or later and npm
+- Git (only if cloning from a repository)
 
 Check your installation:
 
@@ -22,21 +25,14 @@ node --version
 npm --version
 ```
 
-## Clone and run locally
+## Run locally
 
-The commands below are for PowerShell. Run them in a terminal:
-
-1. Clone the repository and enter the project directory:
-
-   ```powershell
-   git clone https://github.com/Khaviso01/postgresql-library-management-system.git
-   cd postgresql-library-management-system
-   ```
-
+1. Download/extract the project, or clone **your actual The Retreat repository** and open its root folder.
 2. Install dependencies from the project root:
 
    ```powershell
    npm install
+   npm run install:all
    ```
 
 3. Create the server environment file:
@@ -45,131 +41,191 @@ The commands below are for PowerShell. Run them in a terminal:
    Copy-Item server\.env.example server\.env
    ```
 
-4. Create a PostgreSQL database named `the_retreat` (or choose another name and update the connection URL):
-
-   ```powershell
-   createdb the_retreat
-   ```
-
-   If `createdb` is unavailable, create the database using your PostgreSQL client or hosting provider.
-
-5. Edit `server\.env`. Set `DATABASE_URL` to your database connection string and replace `JWT_SECRET` with a private random value of at least 32 characters. For example, generate one with:
+4. Edit `server/.env` and replace the example JWT secret. Generate a random value with:
 
    ```powershell
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 
-   Example configuration:
+   The environment file contains these settings:
 
    ```dotenv
-   DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/the_retreat?schema=public"
-   JWT_SECRET="paste-your-generated-secret-here"
    PORT=4000
-   CLIENT_URL="http://localhost:5173"
+   JWT_SECRET=replace-with-a-long-random-secret
+   CLIENT_URL=http://localhost:5173
    ```
 
-   URL-encode special characters in database credentials. Do not commit `server/.env` or use the example secret outside local development.
-
-6. This project has no checked-in Prisma migrations. Create and apply the initial migration:
-
-   ```powershell
-   npm run db:migrate -w server -- --name init
-   ```
-
-7. Start the frontend and API together:
+5. Start the frontend and backend together:
 
    ```powershell
    npm run dev
    ```
 
-8. Open the Vite URL shown in the terminal (normally `http://localhost:5173`). The API runs on `http://localhost:4000`; its health check is `http://localhost:4000/api/health` and should return `{"ok":true}`.
+6. Open the application:
 
-Keep the terminal running while you use the app. Press `Ctrl+C` to stop the development processes.
+   | Page/service | URL |
+   | --- | --- |
+   | Guest website | http://localhost:5173 |
+   | Admin dashboard | http://localhost:5173/admin |
+   | API health check | http://localhost:4000/api/health |
 
-## Database and first admin
+Press `Ctrl+C` in the terminal to stop the development servers.
 
-The database starts empty: there are no sample branches, rooms, or users. The declared `db:seed` command currently points to a missing seed file, so it will fail.
+## Features
 
-To populate the app, register at `/auth`, then promote your account to admin directly in PostgreSQL:
+### Guest website
 
-```sql
-UPDATE "User"
-SET role = 'ADMIN'::"Role"
-WHERE email = 'you@example.com';
+- Browse hotel branches and rooms with photographs, descriptions, amenities, and prices.
+- Filter rooms by branch and guest capacity.
+- Register, sign in, and view the authenticated account.
+- Create booking requests, view booking history and details, and cancel bookings.
+- Save and remove favourite hotel branches.
+- View and submit reviews.
+- Read notifications and mark them as read.
+
+### Admin dashboard
+
+- View booking, revenue, branch, room, user, and occupancy statistics.
+- Create, edit, and delete rooms.
+- Create and edit hotel branches.
+- View bookings and update booking statuses.
+- View registered users and reviews.
+- Send notifications to one user or all guest accounts.
+- Access reports and settings interfaces; not every setting has a dedicated backend operation.
+
+## Booking rules
+
+Bookings require authentication. The backend checks that the selected room exists and is available, the check-out date follows check-in, guest count fits room capacity, and the requested dates do not overlap an existing non-cancelled booking.
+
+```text
+Total (ZAR) = room price per night × number of nights + R150 service fee
 ```
 
-Sign out and back in to get a new token. Then use `/admin` to create branches and rooms. Registration always creates guest accounts; never grant admin access to untrusted users.
+New bookings start as `pending`. Admins can set `pending`, `confirmed`, or `cancelled`; guests can cancel their own bookings. **No payment is collected.**
 
-## Features and routes
+## Starter data and admin access
 
-- **Guest:** browse branches and rooms, register/sign in, request bookings, view bookings, submit reviews, manage favourites, and view notifications.
-- **Admin:** manage branches, rooms, bookings, users, and reviews; view dashboard/reports; broadcast notifications.
+On the first run, `server/src/services/database.ts` creates `data.json` from `server/src/services/seed.ts` if the file does not already exist.
 
-Main client routes: `/`, `/branches`, `/branches/:id`, `/rooms/:id/book`, `/bookings`, `/auth`, and `/admin` (with admin subpages).
+The starter data includes four branches—Cape Town, Durban, Pretoria, and Kruger—and four room types per branch (16 rooms total).
 
-The client uses a Vite proxy for `/api` requests to `http://localhost:4000`. Booking requests start as `PENDING`; booking totals are calculated as nights × room price + 150. No payment is collected.
+**Development-only admin account:**
+
+```text
+Email:    admin@theretreat.test
+Password: Admin123!
+```
+
+Do not deploy with these credentials. New registrations receive the `guest` role. Existing `data.json` records are retained on restart; editing `seed.ts` does not overwrite them.
 
 ## API overview
 
-All API paths are prefixed with `/api`. Authenticated requests use:
+All routes are prefixed with `/api`. Protected requests use `Authorization: Bearer <token>`.
 
-```http
-Authorization: Bearer <token>
-```
+| Method | Endpoint | Access | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/health` | Public | Health check |
+| POST | `/api/auth/register` | Public | Register guest |
+| POST | `/api/auth/login` | Public | Sign in |
+| GET | `/api/auth/me` | Authenticated | Current user |
+| GET | `/api/branches` | Public | All branches |
+| GET | `/api/branches/:id` | Public | Branch details |
+| GET | `/api/rooms` | Public | Rooms; optional `branchId` and `guests` filters |
+| GET | `/api/rooms/:id` | Public | Room details |
+| POST | `/api/bookings` | Authenticated | Create booking |
+| GET | `/api/bookings` | Authenticated | Own bookings; all for admin |
+| GET | `/api/bookings/:id` | Authenticated | Accessible booking details |
+| PATCH | `/api/bookings/:id` | Authenticated | Change permitted booking status |
+| GET | `/api/favourites` | Authenticated | Favourite branches |
+| POST | `/api/favourites/:branchId` | Authenticated | Add favourite |
+| DELETE | `/api/favourites/:branchId` | Authenticated | Remove favourite |
+| GET | `/api/reviews` | Public | List reviews |
+| POST | `/api/reviews` | Authenticated | Submit review |
+| GET | `/api/notifications` | Authenticated | Own notifications |
+| PATCH | `/api/notifications/:id/read` | Authenticated | Mark as read |
+| GET | `/api/admin/stats` | Admin | Dashboard statistics |
+| GET | `/api/admin/users` | Admin | Registered users |
+| POST | `/api/admin/rooms` | Admin | Add room |
+| PATCH | `/api/admin/rooms/:id` | Admin | Edit room |
+| DELETE | `/api/admin/rooms/:id` | Admin | Delete room |
+| POST | `/api/admin/branches` | Admin | Add branch |
+| PATCH | `/api/admin/branches/:id` | Admin | Edit branch |
+| POST | `/api/admin/notifications` | Admin | Send notifications |
 
-| Endpoints | Access | Purpose |
-|---|---|---|
-| `GET /health` | Public | API health check |
-| `POST /auth/register`, `POST /auth/login` | Public | Create account or sign in |
-| `GET /auth/me`, `PATCH /auth/me` | Signed in | Read/update current profile |
-| `GET /branches`, `GET /branches/:id`, `GET /rooms` | Public | Browse branches and rooms |
-| `/bookings` (`GET`, `POST`), `/bookings/:id` (`GET`, `PATCH`, `DELETE`) | Signed in | Manage own bookings |
-| `/reviews`, `/favourites`, `/notifications` | Signed in | Reviews, saved branches, and notifications |
-| `/admin/*` | Admin | Dashboard and hotel/user/review/notification management |
-
-Requests with invalid data return an error; admin endpoints require an `ADMIN` role. See `server/src/routes/` for request fields and endpoint behavior.
-
-## Commands
-
-Run commands from the project root:
-
-| Command | Purpose |
-|---|---|
-| `npm install` | Install all workspace dependencies |
-| `npm run dev` | Run client and API together |
-| `npm run dev -w client` | Run only the Vite client |
-| `npm run dev -w server` | Run only the API |
-| `npm run build` | Type-check/build client and compile server |
-| `npm run db:migrate` | Apply development migrations after the initial migration |
-| `npm run db:generate -w server` | Regenerate Prisma Client |
-| `npm start -w server` | Start the compiled API after building |
-
-There are currently no test or lint scripts.
-
-## Build and deployment
-
-Build both workspaces:
-
-```powershell
-npm run build
-```
-
-The client output is in `client/dist`; the compiled server is in `server/dist`. The API can be started after building with `npm start -w server`. The client has no production `start` script; host `client/dist` on a static web server configured for SPA route fallback. Configure production API routing, CORS (`CLIENT_URL`), secrets, and database migrations for your hosting environment. The local Vite proxy is for development only.
-
-## Troubleshooting
-
-- **Missing/weak `JWT_SECRET`:** Set a private value of 32 or more characters in `server/.env`.
-- **Database connection or missing-table errors:** Check that PostgreSQL is running, the database exists, and the URL is correct; then run the initial migration command above.
-- **No hotels displayed:** The database has no seed data. Create an admin and add branches/rooms.
-- **`npm run db:seed` fails:** The seed file has not been implemented.
-- **API unavailable:** Keep `npm run dev` running and check `http://localhost:4000/api/health`. The Vite proxy targets port 4000.
-- **Admin API responds `403`:** Promote the account in the database, then sign out and back in.
+See `server/src/routes/` for request schemas and authorization details.
 
 ## Project structure
 
 ```text
-client/                 React application, pages, components, and Vite config
-server/src/             Express app, API routes, and authentication middleware
-server/prisma/          Prisma schema
-package.json            Root workspace scripts
+the-retreat-hotel/
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── admin/
+│   │   │   ├── guest/
+│   │   │   └── shared/
+│   │   ├── context/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── pages/
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── style.css
+│   ├── package.json
+│   └── vite.config.ts
+├── server/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── index.ts
+│   ├── .env.example
+│   └── package.json
+├── package.json
+└── README.md
 ```
+
+## Commands
+
+| Run from project root | Description |
+| --- | --- |
+| `npm install` | Install root dependencies |
+| `npm run install:all` | Install client and server dependencies |
+| `npm run dev` | Run both development servers |
+| `npm run build` | Build client and server |
+
+To run one service individually:
+
+```powershell
+npm run dev --prefix client
+npm run dev --prefix server
+```
+
+To start the compiled API after building:
+
+```powershell
+npm start --prefix server
+```
+
+The frontend builds into `client/dist` and the backend into `server/dist`. The Vite `/api` proxy targets port 4000 during local development; configure API routing separately for production hosting.
+
+## Troubleshooting
+
+- **Frontend cannot reach API:** Check that the backend is running on port 4000 and the Vite proxy configuration is unchanged.
+- **Admin login fails:** Confirm the credentials and check whether an existing `data.json` has different users.
+- **Hotels or rooms missing:** Check the saved `data.json`; starter data is used only when the file is first created.
+- **JWT/authentication errors:** Verify `server/.env`, restart the API, and sign in again.
+- **Port already in use:** Stop the other process or update the relevant port configuration.
+- **Dependency or build errors:** Install dependencies in both `client` and `server`, then review the terminal output.
+
+## Current limitations
+
+This is a development demo, not a production-ready booking platform. It uses a local JSON file rather than a transactional database, image URLs rather than a managed upload service, and does not integrate OAuth or Stripe. Automated tests and production security hardening have not been completed. Do not use the starter admin credentials in a public deployment.
+
+## License
+
+No license has been specified for this project.

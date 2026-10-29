@@ -1,6 +1,8 @@
+
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, LogOut } from 'lucide-react';
+
 import {
   api,
   send,
@@ -11,13 +13,16 @@ import {
   type Booking,
   type User,
 } from '../lib/api';
+
 import { useApp } from '../context/AppContext';
+
 import {
   AdminSidebar,
   PageTitle,
   Loading,
   Empty,
 } from '../components/shared/Shared';
+
 import {
   StatsCards,
   AdminSearch,
@@ -33,10 +38,12 @@ import {
   SettingsPanel,
 } from '../components/admin/AdminComponents';
 
-/**
- * Admin layout wrapper protected by client-side route guards and server-side role checks.
- */
-export function AdminLayout({ children }: { children: React.ReactNode }) {
+// Admin layout is protected by both client routing and server role checks.
+export function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -45,18 +52,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * Custom hook for fetching and reloading administrative data collections.
- */
+// Fetch admin data from the API and provide a reload function.
 function useAdminData<T>(path: string) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
 
+  // Fetch the requested data and capture any request errors.
   const reload = () =>
     api<T>(path)
       .then(setData)
-      .catch((e) => setError(e.message));
+      .catch(e => setError(e.message));
 
+  // Reload data whenever the API path changes.
   useEffect(() => {
     reload();
   }, [path]);
@@ -64,9 +71,7 @@ function useAdminData<T>(path: string) {
   return { data, error, reload };
 }
 
-/**
- * Admin Dashboard view displaying KPI statistics, revenue chart, and recent bookings.
- */
+// Display dashboard statistics, revenue analytics, and recent bookings.
 export function AdminDashboard() {
   const { data: stats } = useAdminData<Stats>('/admin/stats');
   const { data: bookings } = useAdminData<Booking[]>('/bookings');
@@ -77,49 +82,64 @@ export function AdminDashboard() {
         title="Dashboard"
         subtitle="Welcome to The Retreat administration"
       />
+
       {stats ? <StatsCards stats={stats} /> : <Loading />}
+
       <div className="admin-dashboard-grid">
         <div className="panel">
           <RevenueChart bookings={bookings || []} />
         </div>
+
         <div className="panel">
           <h3>Recent Bookings</h3>
-          {bookings?.slice(0, 5).map((b) => (
+
+          {bookings?.slice(0, 5).map(b => (
             <p className="flex-between" key={b.id}>
               <span>{b.id}</span>
               <strong>{money(b.total)}</strong>
             </p>
           ))}
-          <Link to="/admin/bookings">View All Bookings →</Link>
+
+          <Link to="/admin/bookings">
+            View All Bookings →
+          </Link>
         </div>
       </div>
     </AdminLayout>
   );
 }
 
-/**
- * Room management view supporting creation, editing, filtering, and deletion of rooms.
- */
+// Manage hotel rooms, including searching, adding, editing, and deleting.
 export function AdminRooms() {
   const { data: rooms, reload } = useAdminData<Room[]>('/rooms');
   const { data: branches } = useAdminData<Branch[]>('/branches');
+
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Room | null>(null);
   const [form, setForm] = useState(false);
+
   const { toast, confirm } = useApp();
 
+  // Create a new room or update the currently selected room.
   const save = async (v: Omit<Room, 'id'>) => {
     await send(
       editing ? '/admin/rooms/' + editing.id : '/admin/rooms',
       editing ? 'PATCH' : 'POST',
       v
     );
-    toast(editing ? 'Room updated successfully!' : 'Room added successfully!');
+
+    toast(
+      editing
+        ? 'Room updated successfully!'
+        : 'Room added successfully!'
+    );
+
     setForm(false);
     setEditing(null);
     reload();
   };
 
+  // Request confirmation before permanently deleting a room.
   const del = (room: Room) =>
     confirm(`Permanently delete ${room.name}?`, async () => {
       await send('/admin/rooms/' + room.id, 'DELETE');
@@ -130,7 +150,13 @@ export function AdminRooms() {
   return (
     <AdminLayout>
       <PageTitle
-        title={form ? (editing ? 'Edit Room' : 'Add New Room') : 'Manage Rooms'}
+        title={
+          form
+            ? editing
+              ? 'Edit Room'
+              : 'Add New Room'
+            : 'Manage Rooms'
+        }
         subtitle="Create, update, and manage room availability"
         action={
           !form && (
@@ -141,11 +167,13 @@ export function AdminRooms() {
                 setForm(true);
               }}
             >
-              <Plus size={16} /> Add Room
+              <Plus size={16} />
+              Add Room
             </button>
           )
         }
       />
+
       {form && branches ? (
         <div className="panel">
           <RoomForm
@@ -163,34 +191,39 @@ export function AdminRooms() {
             onChange={setSearch}
             placeholder="Search rooms by name or type..."
           />
+
           {rooms && branches ? (
             <RoomsTable
-              rooms={rooms.filter((r) =>
-                (r.name + ' ' + r.type).toLowerCase().includes(search.toLowerCase())
+              rooms={rooms.filter(r =>
+                (r.name + ' ' + r.type)
+                  .toLowerCase()
+                  .includes(search.toLowerCase())
               )}
               branches={branches}
-              onEdit={(r) => {
+              onEdit={r => {
                 setEditing(r);
                 setForm(true);
               }}
               onDelete={del}
             />
           ) : (
-            <Loading />}
+            <Loading />
+          )}
         </div>
       )}
     </AdminLayout>
   );
 }
 
-/**
- * Booking management view allowing administrators to approve or cancel reservations.
- */
+// Display guest bookings and allow administrators to update their statuses.
 export function AdminBookings() {
-  const { data: bookings, reload } = useAdminData<Booking[]>('/bookings');
+  const { data: bookings, reload } =
+    useAdminData<Booking[]>('/bookings');
+
   const { data: rooms } = useAdminData<Room[]>('/rooms');
   const { confirm, toast } = useApp();
 
+  // Confirm and submit a booking status update.
   const update = (b: Booking, status: Booking['status']) =>
     confirm(
       `${status === 'confirmed' ? 'Approve' : 'Cancel'} booking ${b.id}?`,
@@ -207,6 +240,7 @@ export function AdminBookings() {
         title="Manage Bookings"
         subtitle="Approve and manage guest reservations"
       />
+
       <div className="panel">
         {bookings && rooms ? (
           <BookingsTable
@@ -222,11 +256,11 @@ export function AdminBookings() {
   );
 }
 
-/**
- * Branch management view for editing hotel locations, descriptions, and imagery.
- */
+// Display hotel branches and allow administrators to edit their details.
 export function AdminBranches() {
-  const { data: branches, reload } = useAdminData<Branch[]>('/branches');
+  const { data: branches, reload } =
+    useAdminData<Branch[]>('/branches');
+
   const [editing, setEditing] = useState<Branch | null>(null);
   const { toast } = useApp();
 
@@ -236,13 +270,19 @@ export function AdminBranches() {
         title={editing ? 'Edit Branch' : 'Manage Branches'}
         subtitle="Update hotel information, images and locations"
       />
+
       {editing ? (
         <div className="panel">
           <BranchForm
             branch={editing}
             onCancel={() => setEditing(null)}
-            onSave={async (v) => {
-              await send('/admin/branches/' + v.id, 'PATCH', v);
+            onSave={async v => {
+              await send(
+                '/admin/branches/' + v.id,
+                'PATCH',
+                v
+              );
+
               toast('Branch updated successfully!');
               setEditing(null);
               reload();
@@ -250,7 +290,10 @@ export function AdminBranches() {
           />
         </div>
       ) : branches ? (
-        <BranchManager branches={branches} onEdit={setEditing} />
+        <BranchManager
+          branches={branches}
+          onEdit={setEditing}
+        />
       ) : (
         <Loading />
       )}
@@ -258,9 +301,7 @@ export function AdminBranches() {
   );
 }
 
-/**
- * User management view displaying registered guests and administrators.
- */
+// Display registered guest and administrator accounts.
 export function AdminUsers() {
   const { data } = useAdminData<User[]>('/admin/users');
 
@@ -270,6 +311,7 @@ export function AdminUsers() {
         title="Manage Users"
         subtitle="Registered guests and administrators"
       />
+
       <div className="panel">
         {data ? <UsersTable users={data} /> : <Loading />}
       </div>
@@ -277,12 +319,15 @@ export function AdminUsers() {
   );
 }
 
-/**
- * Guest reviews moderation view.
- */
+// Display guest reviews, including ratings and written feedback.
 export function AdminReviews() {
   const { data } = useAdminData<
-    { id: string; text: string; rating: number; branchId: string }[]
+    {
+      id: string;
+      text: string;
+      rating: number;
+      branchId: string;
+    }[]
   >('/reviews');
 
   return (
@@ -291,9 +336,10 @@ export function AdminReviews() {
         title="Guest Reviews"
         subtitle="Read submitted hotel feedback"
       />
+
       <div className="admin-cards">
         {data?.length ? (
-          data.map((r) => (
+          data.map(r => (
             <div className="panel" key={r.id}>
               <h3>★ {r.rating} / 5</h3>
               <p>{r.text}</p>
@@ -308,9 +354,7 @@ export function AdminReviews() {
   );
 }
 
-/**
- * Notification composer view for broadcasting updates to guests.
- */
+// Send notifications and announcements to registered guests.
 export function AdminNotifications() {
   const { toast } = useApp();
 
@@ -320,14 +364,19 @@ export function AdminNotifications() {
         title="Notifications"
         subtitle="Send updates and offers to registered guests"
       />
+
       <div className="panel">
         <NotificationComposer
           onSend={async (title, message) => {
-            const result = await send<{ sent: number }>('/admin/notifications', 'POST', {
-              title,
-              message,
-            });
-            toast(`Notification sent to ${result.sent} guests.`);
+            const result = await send<{ sent: number }>(
+              '/admin/notifications',
+              'POST',
+              { title, message }
+            );
+
+            toast(
+              `Notification sent to ${result.sent} guests.`
+            );
           }}
         />
       </div>
@@ -335,12 +384,11 @@ export function AdminNotifications() {
   );
 }
 
-/**
- * Reports and analytics view showing overall performance metrics and charts.
- */
+// Display booking statistics and revenue analytics.
 export function AdminReports() {
   const { data: stats } = useAdminData<Stats>('/admin/stats');
-  const { data: bookings } = useAdminData<Booking[]>('/bookings');
+  const { data: bookings } =
+    useAdminData<Booking[]>('/bookings');
 
   return (
     <AdminLayout>
@@ -348,7 +396,9 @@ export function AdminReports() {
         title="Reports & Analytics"
         subtitle="Business performance overview"
       />
+
       {stats && <StatsCards stats={stats} />}
+
       <div className="panel">
         <RevenueChart bookings={bookings || []} />
       </div>
@@ -356,13 +406,15 @@ export function AdminReports() {
   );
 }
 
-/**
- * Administrative settings overview panel.
- */
+// Display the administration settings interface.
 export function AdminSettings() {
   return (
     <AdminLayout>
-      <PageTitle title="Settings" subtitle="Administration preferences" />
+      <PageTitle
+        title="Settings"
+        subtitle="Administration preferences"
+      />
+
       <div className="panel">
         <SettingsPanel />
       </div>
@@ -370,19 +422,22 @@ export function AdminSettings() {
   );
 }
 
-/**
- * Secure administrator sign-out confirmation view.
- */
+// Confirm administrator sign-out and redirect to the signed-out page.
 export function AdminSignout() {
   const { logout, confirm } = useApp();
   const navigate = useNavigate();
 
   return (
     <AdminLayout>
-      <PageTitle title="Sign Out" subtitle="Securely end your admin session" />
+      <PageTitle
+        title="Sign Out"
+        subtitle="Securely end your admin session"
+      />
+
       <div className="panel">
         <h2>Sign out of The Retreat?</h2>
         <p>You will return to the guest site.</p>
+
         <button
           className="btn danger"
           onClick={() =>
@@ -395,7 +450,8 @@ export function AdminSignout() {
             )
           }
         >
-          <LogOut size={17} /> Sign Out
+          <LogOut size={17} />
+          Sign Out
         </button>
       </div>
     </AdminLayout>

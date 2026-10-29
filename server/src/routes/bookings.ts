@@ -1,201 +1,189 @@
+
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db } from '../lib/db.js';
-import { auth, type AuthRequest } from '../middleware/auth.js';
+import type { Booking } from '../models/types.js';
+import { db, save } from '../services/database.js';
+import { requireAuth } from '../middleware/auth.js';
+import { handle } from '../controllers/helpers.js';
 
-export const bookingRouter = Router();
+// Initialize the Express router for managing hotel bookings.
+const router = Router();
 
-// Apply authentication middleware to all booking routes
-bookingRouter.use(auth);
-
-// Zod schema for validating incoming booking creation payloads
-const schema = z.object({
+// Define validation rules for creating a new booking.
+const bookingSchema = z.object({
   roomId: z.string(),
   checkIn: z.string(),
   checkOut: z.string(),
-  guests: z.number().int().min(1).max(12),
+  guests: z.number().int().min(1)
 });
 
-// Reusable Prisma relation include object for fetching room and branch details
-const include = { room: { include: { branch: true } } };
+// POST: Create a new hotel room booking.
+router.post(
+  '/',
+  requireAuth,
+  handle((req, res) => {
+    // Validate booking details and find the selected room.
+    const v = bookingSchema.parse(req.body),
+      room = db.rooms.find(r => r.id === v.roomId);
 
-// GET: Retrieve all bookings belonging to the currently authenticated user
-bookingRouter.get('/', async (req: AuthRequest, res, next) => {
-  try {
-    res.json(
-      await db.booking.findMany({
-        where: { userId: req.user!.id },
-        include,
-        orderBy: { createdAt: 'desc' },
-      })
+    // Ensure the selected room exists and is available.
+    if (!room || !room.available)
+      throw Error('Room unavailable.');
+
+    // Calculate the number of nights between check-in and check-out.
+    const nights = Math.round(
+      (Date.parse(v.checkOut) - Date.parse(v.checkIn)) / 86400000
     );
-  } catch (e) {
-    next(e);
-  }
-});
 
-// GET: Retrieve a specific booking by ID for the authenticated user
-bookingRouter.get('/:id', async (req: AuthRequest, res, next) => {
-  try {
-    const item = await db.booking.findFirst({
-      where: { id: req.params.id, userId: req.user!.id },
-      include,
-    });
-    
-    if (!item) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-    
-    res.json(item);
-  } catch (e) {
-    next(e);
-  }
-});
+    // Ensure the booking dates are valid.
+    if (!Number.isFinite(nights) || nights < 1)
+      throw Error('Check-out must be after check-in.');
 
-// POST: Create a new room booking with date validation, availability checks, and overlap prevention
-bookingRouter.post('/', async (req: AuthRequest, res, next) => {
-  try {
-    const v = schema.parse(req.body);
-    const start = new Date(v.checkIn);
-    const end = new Date(v.checkOut);
+    // Check that the number of guests does not exceed room capacity.
+    if (v.guests > room.capacity)
+      throw Error('Room capacity exceeded.');
 
-    // Validate that dates are valid timestamp numbers, check-out follows check-in, and dates are in the future
-    if (
-      !Number.isFinite(+start) ||
-      !Number.isFinite(+end) ||
-      end <= start ||
-      start < new Date(new Date().toDateString())
-    ) {
-      return res.status(400).json({ error: 'Choose valid future dates' });
-    }
+    // Check for existing bookings that overlap with the selected dates.
+    const overlap = db.bookings.some(
+      b =>
+        b.roomId === room.id &&
+        b.status !== 'cancelled' &&
+        v.checkIn < b.checkOut &&
+        v.checkOut > b.checkIn
+    );
 
-    // Verify room existence, active availability flag, and guest capacity limits
-    const room = await db.room.findUnique({ where: { id: v.roomId } });
-    if (!room?.available || v.guests > room.capacity) {
-      return res.status(400).json({ error: 'Room unavailable or capacity exceeded' });
-    }
+    // Prevent double bookings for the same room and dates.
+    if (overlap)
+      throw Error('Room already booked for these dates.');
 
-    // Check for existing overlapping bookings for this room that are not cancelled
-    const overlap = await db.booking.count({
-      where: {
-        roomId: room.id,
-        status: { not: 'CANCELLED' },
-        checkIn: { lt: end },
-        checkOut: { gt: start },
-      },
+    // Create a booking with a unique reference number.
+    // The total includes the room price per night and a R150 service fee.
+    const b: Booking = {
+      id: 'TR-' + Date.now().toString().slice(-9),
+      userId: req.auth!.sub,
+      roomId: room.id,
+      checkIn: v.checkIn,
+      checkOut: v.checkOut,
+      guests: v.guests,
+      total: room.price * nights + 150,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+
+    // Add the new booking to the database.
+    db.bookings.push(b);
+
+    // Notify the guest that their booking is awaiting confirmation.
+    db.notices.push({
+      id: crypto.randomUUID(),
+      userId: b.userId,
+      title: 'Booking requested',
+      message: `Reservation ${b.id} is pending confirmation.`,
+      read: false,
+      createdAt: new Date().toISOString()
     });
 
-    if (overlap) {
-      return res.status(409).json({ error: 'Room already booked for these dates' });
-    }
+    // Save the booking and notification.
+    save();
 
-    // Calculate total price based on duration in nights, room nightly rate, and standard service fees
-    const nights = Math.round((+end - +start) / 86400000);
-    const total = nights * room.price + 150;
+    // Return the newly created booking.
+    res.status(201).json(b);
+  })
+);
 
-     // Create the booking record with a unique generated reference code
-    const booking = await db.booking.create({
-      data: {
-        reference: 'TR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),
-        userId: req.user!.id,
-        roomId: room.id,
-        checkIn: start,
-        checkOut: end,
-        guests: v.guests,
-        total,
-      },
-      include,
+// GET: Retrieve bookings belonging to the authenticated user.
+// Admins can retrieve all bookings, while guests can only view their own.
+router.get(
+  '/',
+  requireAuth,
+  handle((req, res) => {
+    res.json(
+      db.bookings
+        .filter(
+          b =>
+            req.auth!.role === 'admin' ||
+            b.userId === req.auth!.sub
+        )
+        .sort((a, b) =>
+          b.createdAt.localeCompare(a.createdAt)
+        )
+    );
+  })
+);
+
+// GET: Retrieve a specific booking using its booking ID.
+router.get(
+  '/:id',
+  requireAuth,
+  handle((req, res) => {
+    // Find the booking and verify that the user has access to it.
+    const b = db.bookings.find(
+      b =>
+        b.id === req.params.id &&
+        (
+          req.auth!.role === 'admin' ||
+          b.userId === req.auth!.sub
+        )
+    );
+
+    // Return an error if the booking does not exist or is inaccessible.
+    if (!b)
+      throw Error('Booking not found.');
+
+    // Return the selected booking.
+    res.json(b);
+  })
+);
+
+// PATCH: Update the status of an existing booking.
+router.patch(
+  '/:id',
+  requireAuth,
+  handle((req, res) => {
+    // Find the booking and verify that the user has access to it.
+    const b = db.bookings.find(
+      b =>
+        b.id === req.params.id &&
+        (
+          req.auth!.role === 'admin' ||
+          b.userId === req.auth!.sub
+        )
+    );
+
+    // Ensure the requested booking exists.
+    if (!b)
+      throw Error('Booking not found.');
+
+    // Validate the new booking status.
+    const { status } = z.object({
+      status: z.enum(['pending', 'confirmed', 'cancelled'])
+    }).parse(req.body);
+
+    // Only administrators can approve or change bookings to non-cancelled statuses.
+    if (req.auth!.role !== 'admin' && status !== 'cancelled')
+      throw Error('Only admins can approve bookings.');
+
+    // Update the booking status.
+    b.status = status;
+
+    // Notify the guest about the booking status change.
+    db.notices.push({
+      id: crypto.randomUUID(),
+      userId: b.userId,
+      title: 'Booking updated',
+      message: `${b.id} is now ${status}.`,
+      read: false,
+      createdAt: new Date().toISOString()
     });
 
-    // Create an in-app notification confirming receipt of the booking request
-    await db.notification.create({
-      data: {
-        userId: req.user!.id,
-        title: 'Booking request received',
-        message: 'Your booking ' + booking.reference + ' is awaiting confirmation.',
-      },
-    });
+    // Save the updated booking and notification.
+    save();
 
-    res.status(201).json(booking);
-  } catch (e) {
-    next(e);
-  }
-});
+    // Return the updated booking.
+    res.json(b);
+  })
+);
 
-// PATCH: Modify check-in and check-out dates for an existing pending booking
-bookingRouter.patch('/:id', async (req: AuthRequest, res, next) => {
-  try {
-    const v = z.object({ checkIn: z.string(), checkOut: z.string() }).parse(req.body);
-
-    // Ensure the booking exists, belongs to the user, and is currently in pending status
-    const existing = await db.booking.findFirst({
-      where: { id: req.params.id, userId: req.user!.id, status: 'PENDING' },
-      include: { room: true },
-    });
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Only pending bookings can be modified' });
-    }
-
-    const start = new Date(v.checkIn);
-    const end = new Date(v.checkOut);
-
-    // Validate modified date inputs
-    if (
-      !Number.isFinite(+start) ||
-      !Number.isFinite(+end) ||
-      end <= start ||
-      start < new Date(new Date().toDateString())
-    ) {
-      return res.status(400).json({ error: 'Invalid dates' });
-    }
-
-    // Check for date conflicts with other active bookings for the same room
-    const overlap = await db.booking.count({
-      where: {
-        roomId: existing.roomId,
-        id: { not: existing.id },
-        status: { not: 'CANCELLED' },
-        checkIn: { lt: end },
-        checkOut: { gt: start },
-      },
-    });
-
-    if (overlap) {
-      return res.status(409).json({ error: 'Room unavailable' });
-    }
-
-    // Recalculate cost and update booking dates
-    const updatedBooking = await db.booking.update({
-      where: { id: existing.id },
-      data: {
-        checkIn: start,
-        checkOut: end,
-        total: Math.round((+end - +start) / 86400000) * existing.room.price + 150,
-      },
-      include,
-    });
-
-    res.json(updatedBooking);
-  } catch (e) {
-    next(e);
-  }
-});
-
-// DELETE: Cancel an existing booking by updating its status to cancelled
-bookingRouter.delete('/:id', async (req: AuthRequest, res, next) => {
-  try {
-    const result = await db.booking.updateMany({
-      where: { id: req.params.id, userId: req.user!.id, status: { not: 'CANCELLED' } },
-      data: { status: 'CANCELLED' },
-    });
-
-    if (!result.count) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    res.json({ message: 'Booking cancelled' });
-  } catch (e) {
-    next(e);
-  }
-});
+// Export the booking router for registration in the main Express application.
+export default router;

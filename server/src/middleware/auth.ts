@@ -1,39 +1,32 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../config/env.js';
+import type { User } from '../models/types.js';
 
-// Extend Express Request type to include the authenticated user payload
-export type AuthRequest = Request & {
-  user?: {
-    id: string;
-    role: string;
-  };
-};
+// Generate a signed JWT authentication token valid for 7 days.
+export const token = (u: User) =>
+  jwt.sign({ sub: u.id, role: u.role }, JWT_SECRET, { expiresIn: '7d' });
 
-// Authentication middleware to verify JWT from the Authorization header and attach the decoded user session to the request object
-export function auth(req: AuthRequest, res: Response, next: NextFunction) {
-  // Extract Bearer token from request headers
-  const token = req.headers.authorization?.replace(/^Bearer /, '');
+// Extended Express Request type containing the parsed JWT auth payload.
+export type AuthRequest = Request & { auth?: { sub: string; role: 'guest' | 'admin' } };
 
-  if (!token) {
-    return res.status(401).json({ error: 'Please sign in' });
-  }
-
+// Middleware to verify JWT Bearer token from authorization headers.
+export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    // Verify token validity and attach user payload
-    req.user = jwt.verify(token, process.env.JWT_SECRET!) as {
-      id: string;
-      role: string;
-    };
+    const raw = req.headers.authorization?.replace(/^Bearer /, '');
+    if (!raw) throw Error();
+    req.auth = jwt.verify(raw, JWT_SECRET) as AuthRequest['auth'];
     next();
   } catch {
-    return res.status(401).json({ error: 'Session expired' });
+    res.status(401).json({ error: 'Please sign in first.' });
   }
 }
 
-// Role-based access control middleware to restrict routes to ADMIN users only.
-export function admin(req: AuthRequest, res: Response, next: NextFunction) {
-  if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Admin access required' });
+// Middleware to restrict route access strictly to users with the administrator role.
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.auth?.role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required.' });
+    return;
   }
   next();
 }

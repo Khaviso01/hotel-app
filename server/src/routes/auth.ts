@@ -1,104 +1,100 @@
+
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db } from '../lib/db.js';
-import { auth, type AuthRequest } from '../middleware/auth.js';
+import type { User } from '../models/types.js';
+import { db, save } from '../services/database.js';
+import { requireAuth, token } from '../middleware/auth.js';
+import { handle, publicUser } from '../controllers/helpers.js';
 
-// Initialize authentication router
-export const authRouter = Router();
+// Initialize the Express router for user authentication.
+const router = Router();
 
-// Validation schema for user registration payload
+// Define validation rules for user registration.
 const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(8)
 });
-// Helper function to sign a JWT token with a 7-day expiration
-function token(user: { id: string; role: string }) {
-  return jwt.sign(user, process.env.JWT_SECRET!, { expiresIn: '7d' });
-}
 
-// POST: Register a new user account and return an authentication token
-authRouter.post('/register', async (req, res, next) => {
-  try {
-    const data = registerSchema.parse(req.body);
+// POST: Register a new guest account.
+router.post(
+  '/register',
+  handle((req, res) => {
+    // Validate the submitted registration information.
+    const v = registerSchema.parse(req.body);
 
-    // Check if the email address is already taken
-    if (await db.user.findUnique({ where: { email: data.email.toLowerCase() } })) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
+    // Check whether the email address is already registered.
+    if (db.users.some(u => u.email === v.email.toLowerCase()))
+      throw Error('Email already registered.');
 
-    // Hash the password securely and create the user record
-    const user = await db.user.create({
-      data: {
-        name: data.name,
-        email: data.email.toLowerCase(),
-        passwordHash: await bcrypt.hash(data.password, 12),
-      },
-    });
+    // Create a new guest user with a unique ID and hashed password.
+    const u: User = {
+      id: crypto.randomUUID(),
+      name: v.name,
+      email: v.email.toLowerCase(),
+      passwordHash: bcrypt.hashSync(v.password, 10),
+      role: 'guest'
+    };
 
+    // Save the new user to the database.
+    db.users.push(u);
+    save();
+
+    // Return the registered user's public information and authentication token.
     res.status(201).json({
-      token: token({ id: user.id, role: user.role }),
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: publicUser(u),
+      token: token(u)
     });
-  } catch (e) {
-    next(e);
-  }
-});
+  })
+);
 
-// POST: Authenticate user credentials and return an authentication token
-authRouter.post('/login', async (req, res, next) => {
-  try {
-    const data = z
-      .object({
-        email: z.string().email(),
-        password: z.string(),
-      })
-      .parse(req.body);
+// POST: Authenticate an existing user.
+router.post(
+  '/login',
+  handle((req, res) => {
+    // Validate and extract the submitted login credentials.
+    const { email, password } = z.object({
+      email: z.string().email(),
+      password: z.string()
+    }).parse(req.body);
 
-    const user = await db.user.findUnique({
-      where: { email: data.email.toLowerCase() },
-    });
+    // Find the user using their email address.
+    const u = db.users.find(
+      u => u.email === email.toLowerCase()
+    );
 
-    // Validate user existence and verify password hash
-    if (!user?.passwordHash || !(await bcrypt.compare(data.password, user.passwordHash))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    // Verify that the user exists and the password is correct.
+    if (!u || !bcrypt.compareSync(password, u.passwordHash))
+      throw Error('Invalid email or password.');
 
+    // Return the authenticated user's public information and token.
     res.json({
-      token: token({ id: user.id, role: user.role }),
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: publicUser(u),
+      token: token(u)
     });
-  } catch (e) {
-    next(e);
-  }
-});
+  })
+);
 
-// GET: Retrieve profile details for the currently authenticated user
-authRouter.get('/me', auth, async (req: AuthRequest, res, next) => {
-  try {
-    const user = await db.user.findUnique({
-      where: { id: req.user!.id },
-      select: { id: true, name: true, email: true, role: true },
-    });
-    res.json(user);
-  } catch (e) {
-    next(e);
-  }
-});
+// GET: Retrieve the currently authenticated user's information.
+router.get(
+  '/me',
+  requireAuth,
+  handle((req, res) => {
+    // Find the user associated with the authentication token.
+    const u = db.users.find(
+      u => u.id === req.auth!.sub
+    );
 
-// PATCH: Update profile information for the currently authenticated user
-authRouter.patch('/me', auth, async (req: AuthRequest, res, next) => {
-  try {
-    const { name } = z.object({ name: z.string().min(2) }).parse(req.body);
-    const updatedUser = await db.user.update({
-      where: { id: req.user!.id },
-      data: { name },
-      select: { id: true, name: true, email: true, role: true },
-    });
-    res.json(updatedUser);
-  } catch (e) {
-    next(e);
-  }
-});
+    // Return an error if the user no longer exists.
+    if (!u)
+      throw Error('User not found.');
+
+    // Return user information without exposing the password hash.
+    res.json(publicUser(u));
+  })
+);
+
+// Export the authentication router for use in the main Express application.
+export default router;
