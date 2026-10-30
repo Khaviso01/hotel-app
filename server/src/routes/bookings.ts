@@ -1,189 +1,405 @@
 
-import { Router } from 'express';
-import crypto from 'node:crypto';
-import { z } from 'zod';
-import type { Booking } from '../models/types.js';
-import { db, save } from '../services/database.js';
-import { requireAuth } from '../middleware/auth.js';
-import { handle } from '../controllers/helpers.js';
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
+import { z, ZodError } from 'zod';
+import { BookingStatus, PaymentStatus, Prisma } from '@prisma/client';
+import { prisma } from '../services/prisma.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
-// Initialize the Express router for managing hotel bookings.
 const router = Router();
 
-// Define validation rules for creating a new booking.
+const DAY_MS = 86_400_000;
+const SERVICE_FEE = 150;
+
+// Validate booking details from the frontend.
 const bookingSchema = z.object({
-  roomId: z.string(),
+  roomId: z.string().min(1),
   checkIn: z.string(),
   checkOut: z.string(),
   guests: z.number().int().min(1)
 });
 
-// POST: Create a new hotel room booking.
+const statusSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'cancelled'])
+});
+
+// Convert PostgreSQL booking records to the existing API format.
+function formatBooking(booking: {
+  id: string;
+  userId: string;
+  roomId: string;
+  checkIn: Date;
+  checkOut: Date;
+  guests: number;
+  total: number;
+  status: BookingStatus;
+  paymentStatus: PaymentStatus;
+  paymentReference: string | null;
+  paidAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: booking.id,
+    userId: booking.userId,
+    roomId: booking.roomId,
+    checkIn: booking.checkIn.toISOString().slice(0, 10),
+    checkOut: booking.checkOut.toISOString().slice(0, 10),
+    guests: booking.guests,
+    total: booking.total,
+    status: booking.status.toLowerCase(),
+    paymentStatus: booking.paymentStatus.toLowerCase(),
+    paymentReference: booking.paymentReference,
+    paidAt: booking.paidAt?.toISOString() ?? null,
+    createdAt: booking.createdAt.toISOString(),
+  };
+}
+
+
+// Validate dates strictly in YYYY-MM-DD format.
+function parseDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+// Convert frontend booking statuses to Prisma enums.
+function toBookingStatus(
+  status: 'pending' | 'confirmed' | 'cancelled'
+): BookingStatus {
+  switch (status) {
+    case 'pending':
+      return BookingStatus.PENDING;
+    case 'confirmed':
+      return BookingStatus.CONFIRMED;
+    case 'cancelled':
+      return BookingStatus.CANCELLED;
+  }
+}
+
+// Handle asynchronous Express routes with authentication support.
+function asyncRoute(
+  handler: (req: AuthRequest, res: Response) => Promise<void>
+) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    Promise.resolve(handler(req, res)).catch(next);
+  };
+}
+
+// POST /api/bookings
+// Create a booking and notification in PostgreSQL.
 router.post(
   '/',
   requireAuth,
-  handle((req, res) => {
-    // Validate booking details and find the selected room.
-    const v = bookingSchema.parse(req.body),
-      room = db.rooms.find(r => r.id === v.roomId);
+  asyncRoute(async (req, res) => {
+    const values = bookingSchema.parse(req.body);
 
-    // Ensure the selected room exists and is available.
-    if (!room || !room.available)
-      throw Error('Room unavailable.');
+    const checkIn = parseDate(values.checkIn);
+    const checkOut = parseDate(values.checkOut);
 
-    // Calculate the number of nights between check-in and check-out.
-    const nights = Math.round(
-      (Date.parse(v.checkOut) - Date.parse(v.checkIn)) / 86400000
-    );
+    if (!checkIn || !checkOut) {
+      res.status(400).json({
+        error: 'Dates must use YYYY-MM-DD format.'
+      });
+      return;
+    }
 
-    // Ensure the booking dates are valid.
-    if (!Number.isFinite(nights) || nights < 1)
-      throw Error('Check-out must be after check-in.');
+    const today = new Date().toISOString().slice(0, 10);
 
-    // Check that the number of guests does not exceed room capacity.
-    if (v.guests > room.capacity)
-      throw Error('Room capacity exceeded.');
+    if (values.checkIn < today) {
+      res.status(400).json({
+        error: 'Check-in cannot be in the past.'
+      });
+      return;
+    }
 
-    // Check for existing bookings that overlap with the selected dates.
-    const overlap = db.bookings.some(
-      b =>
-        b.roomId === room.id &&
-        b.status !== 'cancelled' &&
-        v.checkIn < b.checkOut &&
-        v.checkOut > b.checkIn
-    );
+    const nights =
+      (checkOut.getTime() - checkIn.getTime()) / DAY_MS;
 
-    // Prevent double bookings for the same room and dates.
-    if (overlap)
-      throw Error('Room already booked for these dates.');
+    if (nights < 1) {
+      res.status(400).json({
+        error: 'Check-out must be after check-in.'
+      });
+      return;
+    }
 
-    // Create a booking with a unique reference number.
-    // The total includes the room price per night and a R150 service fee.
-    const b: Booking = {
-      id: 'TR-' + Date.now().toString().slice(-9),
-      userId: req.auth!.sub,
-      roomId: room.id,
-      checkIn: v.checkIn,
-      checkOut: v.checkOut,
-      guests: v.guests,
-      total: room.price * nights + 150,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
+    // Serializable transactions help prevent concurrent double bookings.
+    // Retry transactions that PostgreSQL rejects due to write conflicts.
+    let booking;
 
-    // Add the new booking to the database.
-    db.bookings.push(b);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        booking = await prisma.$transaction(
+          async (tx) => {
+            const room = await tx.room.findUnique({
+              where: { id: values.roomId }
+            });
 
-    // Notify the guest that their booking is awaiting confirmation.
-    db.notices.push({
-      id: crypto.randomUUID(),
-      userId: b.userId,
-      title: 'Booking requested',
-      message: `Reservation ${b.id} is pending confirmation.`,
-      read: false,
-      createdAt: new Date().toISOString()
-    });
+            if (!room || !room.available) {
+              throw new Error('Room unavailable.');
+            }
 
-    // Save the booking and notification.
-    save();
+            if (values.guests > room.capacity) {
+              throw new Error('Room capacity exceeded.');
+            }
 
-    // Return the newly created booking.
-    res.status(201).json(b);
+            // Look for active reservations with overlapping dates.
+            const overlap = await tx.booking.findFirst({
+              where: {
+                roomId: room.id,
+                status: {
+                  not: BookingStatus.CANCELLED
+                },
+                checkIn: { lt: checkOut },
+                checkOut: { gt: checkIn }
+              }
+            });
+
+            if (overlap) {
+              throw new Error(
+                'Room already booked for these dates.'
+              );
+            }
+
+            const id = `TR-${randomUUID().slice(0, 12)}`;
+
+            const created = await tx.booking.create({
+              data: {
+                id,
+                reference: id,
+                userId: req.auth!.sub,
+                roomId: room.id,
+                checkIn,
+                checkOut,
+                guests: values.guests,
+                total: room.price * nights + SERVICE_FEE,
+                status: BookingStatus.PENDING
+              }
+            });
+
+            // Create a notification within the same transaction.
+            await tx.notification.create({
+              data: {
+                userId: created.userId,
+                title: 'Booking requested',
+                message:
+                  `Reservation ${created.id} is pending confirmation.`,
+                read: false
+              }
+            });
+
+            return created;
+          },
+          {
+            isolationLevel:
+              Prisma.TransactionIsolationLevel.Serializable
+          }
+        );
+
+        break;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034' &&
+          attempt < 2
+        ) {
+          continue;
+        }
+
+        if (
+          error instanceof Error &&
+          [
+            'Room unavailable.',
+            'Room capacity exceeded.',
+            'Room already booked for these dates.'
+          ].includes(error.message)
+        ) {
+          res.status(409).json({ error: error.message });
+          return;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!booking) {
+      res.status(409).json({
+        error: 'Booking conflict. Please try again.'
+      });
+      return;
+    }
+
+    res.status(201).json(formatBooking(booking));
   })
 );
 
-// GET: Retrieve bookings belonging to the authenticated user.
-// Admins can retrieve all bookings, while guests can only view their own.
+// GET /api/bookings
+// Guests see their own bookings; admins see all bookings.
 router.get(
   '/',
   requireAuth,
-  handle((req, res) => {
-    res.json(
-      db.bookings
-        .filter(
-          b =>
-            req.auth!.role === 'admin' ||
-            b.userId === req.auth!.sub
-        )
-        .sort((a, b) =>
-          b.createdAt.localeCompare(a.createdAt)
-        )
-    );
+  asyncRoute(async (req, res) => {
+    const bookings = await prisma.booking.findMany({
+      where:
+        req.auth!.role === 'admin'
+          ? {}
+          : { userId: req.auth!.sub },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json(bookings.map(formatBooking));
   })
 );
 
-// GET: Retrieve a specific booking using its booking ID.
+// GET /api/bookings/:id
 router.get(
   '/:id',
   requireAuth,
-  handle((req, res) => {
-    // Find the booking and verify that the user has access to it.
-    const b = db.bookings.find(
-      b =>
-        b.id === req.params.id &&
-        (
-          req.auth!.role === 'admin' ||
-          b.userId === req.auth!.sub
-        )
-    );
+  asyncRoute(async (req, res) => {
+    const booking = await prisma.booking.findFirst({
+      where: {
+        id: String(req.params.id),
+        ...(req.auth!.role !== 'admin' && {
+          userId: req.auth!.sub
+        })
+      }
+    });
 
-    // Return an error if the booking does not exist or is inaccessible.
-    if (!b)
-      throw Error('Booking not found.');
+    if (!booking) {
+      res.status(404).json({
+        error: 'Booking not found.'
+      });
+      return;
+    }
 
-    // Return the selected booking.
-    res.json(b);
+    res.json(formatBooking(booking));
   })
 );
 
-// PATCH: Update the status of an existing booking.
+// PATCH /api/bookings/:id
+// Admins manage statuses; guests may cancel their own bookings.
 router.patch(
   '/:id',
   requireAuth,
-  handle((req, res) => {
-    // Find the booking and verify that the user has access to it.
-    const b = db.bookings.find(
-      b =>
-        b.id === req.params.id &&
-        (
-          req.auth!.role === 'admin' ||
-          b.userId === req.auth!.sub
-        )
-    );
+  asyncRoute(async (req, res) => {
+    const { status } = statusSchema.parse(req.body);
+    if (status === 'confirmed') {
+  res.status(403).json({
+    error: 'Bookings are confirmed only after verified payment.',
+  });
+  return;
+}
 
-    // Ensure the requested booking exists.
-    if (!b)
-      throw Error('Booking not found.');
+    if (
+      req.auth!.role !== 'admin' &&
+      status !== 'cancelled'
+    ) {
+      res.status(403).json({
+        error: 'Only admins can approve bookings.'
+      });
+      return;
+    }
 
-    // Validate the new booking status.
-    const { status } = z.object({
-      status: z.enum(['pending', 'confirmed', 'cancelled'])
-    }).parse(req.body);
+    const updated = await prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findFirst({
+        where: {
+          id: String(req.params.id),
+          ...(req.auth!.role !== 'admin' && {
+            userId: req.auth!.sub
+          })
+        }
+      });
 
-    // Only administrators can approve or change bookings to non-cancelled statuses.
-    if (req.auth!.role !== 'admin' && status !== 'cancelled')
-      throw Error('Only admins can approve bookings.');
+      if (!booking) {
+        return null;
+      }
 
-    // Update the booking status.
-    b.status = status;
+      // Update only when the current status still matches.
+      const result = await tx.booking.updateMany({
+        where: {
+          id: booking.id,
+          status: booking.status
+        },
+        data: {
+          status: toBookingStatus(status)
+        }
+      });
 
-    // Notify the guest about the booking status change.
-    db.notices.push({
-      id: crypto.randomUUID(),
-      userId: b.userId,
-      title: 'Booking updated',
-      message: `${b.id} is now ${status}.`,
-      read: false,
-      createdAt: new Date().toISOString()
+      if (result.count !== 1) {
+        throw new Error(
+          'Booking was changed by another request. Please retry.'
+        );
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: booking.userId,
+          title: 'Booking updated',
+          message: `${booking.id} is now ${status}.`,
+          read: false
+        }
+      });
+
+      return tx.booking.findUniqueOrThrow({
+        where: { id: booking.id }
+      });
     });
 
-    // Save the updated booking and notification.
-    save();
+    if (!updated) {
+      res.status(404).json({
+        error: 'Booking not found.'
+      });
+      return;
+    }
 
-    // Return the updated booking.
-    res.json(b);
+    res.json(formatBooking(updated));
   })
 );
 
-// Export the booking router for registration in the main Express application.
+// Handle validation and booking errors consistently.
+router.use(
+  (
+    error: unknown,
+    _req: Request,
+    res: Response,
+    _next: NextFunction
+  ) => {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        error: 'Invalid booking information.',
+        details: error.flatten()
+      });
+      return;
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.startsWith('Booking was changed')
+    ) {
+      res.status(409).json({
+        error: error.message
+      });
+      return;
+    }
+
+    console.error('Booking API error:', error);
+
+    res.status(500).json({
+      error: 'Unable to process booking request.'
+    });
+  }
+);
+
 export default router;

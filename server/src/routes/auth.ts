@@ -1,100 +1,192 @@
 
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import bcrypt from 'bcryptjs';
-import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { User } from '../models/types.js';
-import { db, save } from '../services/database.js';
-import { requireAuth, token } from '../middleware/auth.js';
-import { handle, publicUser } from '../controllers/helpers.js';
+import { Role, type User as PrismaUser } from '@prisma/client';
 
-// Initialize the Express router for user authentication.
+import { prisma } from '../services/prisma.js';
+import {
+  requireAuth,
+  token,
+  type AuthRequest
+} from '../middleware/auth.js';
+
+import { publicUser } from '../controllers/helpers.js';
+import type { User } from '../models/types.js';
+
 const router = Router();
 
-// Define validation rules for user registration.
+// Convert Prisma's uppercase roles to the existing API format.
+function toAppUser(user: PrismaUser): User {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    passwordHash: user.passwordHash ?? '',
+    role: user.role === Role.ADMIN ? 'admin' : 'guest'
+  };
+}
+
+// Handle asynchronous database errors safely.
+function asyncHandler(
+  fn: (req: AuthRequest, res: Response) => Promise<void>
+) {
+  return (req: AuthRequest, res: Response) => {
+    Promise.resolve()
+      .then(() => fn(req, res))
+      .catch((error: unknown) => {
+        console.error('Authentication error:', error);
+
+        if (res.headersSent) return;
+
+        res.status(400).json({
+          error: error instanceof Error
+            ? error.message
+            : 'Request failed.'
+        });
+      });
+  };
+}
+
+// Validate registration details.
 const registerSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
+  name: z.string().trim().min(2),
+  email: z.string().trim().email(),
   password: z.string().min(8)
 });
 
-// POST: Register a new guest account.
-router.post(
-  '/register',
-  handle((req, res) => {
-    // Validate the submitted registration information.
-    const v = registerSchema.parse(req.body);
+// POST /api/auth/register
+router.post('/register', asyncHandler(async (req, res) => {
+  const values = registerSchema.parse(req.body);
+  const email = values.email.toLowerCase();
 
-    // Check whether the email address is already registered.
-    if (db.users.some(u => u.email === v.email.toLowerCase()))
-      throw Error('Email already registered.');
+  // Check whether the account already exists in PostgreSQL.
+  const existing = await prisma.user.findUnique({
+    where: { email }
+  });
 
-    // Create a new guest user with a unique ID and hashed password.
-    const u: User = {
-      id: crypto.randomUUID(),
-      name: v.name,
-      email: v.email.toLowerCase(),
-      passwordHash: bcrypt.hashSync(v.password, 10),
-      role: 'guest'
-    };
-
-    // Save the new user to the database.
-    db.users.push(u);
-    save();
-
-    // Return the registered user's public information and authentication token.
-    res.status(201).json({
-      user: publicUser(u),
-      token: token(u)
+  if (existing) {
+    res.status(409).json({
+      error: 'Email already registered.'
     });
-  })
-);
+    return;
+  }
 
-// POST: Authenticate an existing user.
-router.post(
-  '/login',
-  handle((req, res) => {
-    // Validate and extract the submitted login credentials.
-    const { email, password } = z.object({
-      email: z.string().email(),
-      password: z.string()
-    }).parse(req.body);
+  // Hash the password before storing the account.
+  const passwordHash = await bcrypt.hash(values.password, 10);
 
-    // Find the user using their email address.
-    const u = db.users.find(
-      u => u.email === email.toLowerCase()
-    );
+  // Create the new guest account in PostgreSQL.
+  const created = await prisma.user.create({
+    data: {
+      name: values.name,
+      email,
+      passwordHash,
+      role: Role.GUEST
+    }
+  });
 
-    // Verify that the user exists and the password is correct.
-    if (!u || !bcrypt.compareSync(password, u.passwordHash))
-      throw Error('Invalid email or password.');
+  const user = toAppUser(created);
 
-    // Return the authenticated user's public information and token.
-    res.json({
-      user: publicUser(u),
-      token: token(u)
+  res.status(201).json({
+    user: publicUser(user),
+    token: token(user)
+  });
+}));
+
+// POST /api/auth/login
+router.post('/login', asyncHandler(async (req, res) => {
+  const values = z.object({
+    email: z.string().email(),
+    password: z.string()
+  }).parse(req.body);
+
+  // Retrieve the account from PostgreSQL.
+  const found = await prisma.user.findUnique({
+    where: {
+      email: values.email.toLowerCase()
+    }
+  });
+
+  // OAuth-only accounts may not have a password.
+  if (
+    !found?.passwordHash ||
+    !(await bcrypt.compare(values.password, found.passwordHash))
+  ) {
+    res.status(401).json({
+      error: 'Invalid email or password.'
     });
-  })
-);
+    return;
+  }
 
-// GET: Retrieve the currently authenticated user's information.
+  const user = toAppUser(found);
+
+  res.json({
+    user: publicUser(user),
+    token: token(user)
+  });
+}));
+
+// GET /api/auth/me
 router.get(
   '/me',
   requireAuth,
-  handle((req, res) => {
-    // Find the user associated with the authentication token.
-    const u = db.users.find(
-      u => u.id === req.auth!.sub
-    );
+  asyncHandler(async (req, res) => {
+    // Find the authenticated account in PostgreSQL.
+    const found = await prisma.user.findUnique({
+      where: { id: req.auth!.sub }
+    });
 
-    // Return an error if the user no longer exists.
-    if (!u)
-      throw Error('User not found.');
+    if (!found) {
+      res.status(404).json({
+        error: 'User not found.'
+      });
+      return;
+    }
 
-    // Return user information without exposing the password hash.
-    res.json(publicUser(u));
+    res.json(publicUser(toAppUser(found)));
   })
 );
 
-// Export the authentication router for use in the main Express application.
+// PATCH /api/auth/me
+router.patch(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const values = z.object({
+      name: z.string().trim().min(2).optional(),
+      email: z.string().trim().email().optional()
+    }).refine(
+      data => data.name !== undefined || data.email !== undefined,
+      { message: 'Provide a name or email to update.' }
+    ).parse(req.body);
+
+    const email = values.email?.toLowerCase();
+
+    // Prevent duplicate email addresses.
+    if (email) {
+      const existing = await prisma.user.findUnique({
+        where: { email }
+      });
+
+      if (existing && existing.id !== req.auth!.sub) {
+        res.status(409).json({
+          error: 'Email already registered.'
+        });
+        return;
+      }
+    }
+
+    // Update the authenticated user's profile.
+    const updated = await prisma.user.update({
+      where: { id: req.auth!.sub },
+      data: {
+        ...(values.name !== undefined && { name: values.name }),
+        ...(email !== undefined && { email })
+      }
+    });
+
+    res.json(publicUser(toAppUser(updated)));
+  })
+);
+
 export default router;

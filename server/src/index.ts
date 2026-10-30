@@ -10,6 +10,7 @@ import favouriteRoutes from './routes/favourites.js';
 import notificationRoutes from './routes/notifications.js';
 import reviewRoutes from './routes/reviews.js';
 import adminRoutes from './routes/admin.js';
+import paymentsRouter from './routes/payments.js';
 
 // Create the API server and register middleware.
 const app = express();
@@ -25,6 +26,7 @@ app.use('/api/favourites', favouriteRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payments', paymentsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use((_req, res) => res.status(404).json({ error: 'Route not found.' }));

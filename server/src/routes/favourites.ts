@@ -1,81 +1,130 @@
 
-import { Router } from 'express';
-import { db, save } from '../services/database.js';
-import { requireAuth } from '../middleware/auth.js';
-import { handle } from '../controllers/helpers.js';
+import {
+  Router,
+  type Response,
+  type NextFunction
+} from 'express';
+
+import { prisma } from '../services/prisma.js';
+import {
+  requireAuth,
+  type AuthRequest
+} from '../middleware/auth.js';
 
 // Initialize the Express router for managing user favourites.
 const router = Router();
 
-// GET: Retrieve all favourite hotel branches for the authenticated user.
+// Handle asynchronous routes safely.
+function asyncRoute(
+  handler: (req: AuthRequest, res: Response) => Promise<void>
+) {
+  return (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    Promise.resolve(handler(req, res)).catch(next);
+  };
+}
+
+// GET /api/favourites
+// Retrieve the hotel branches saved by the authenticated user.
 router.get(
   '/',
   requireAuth,
-  handle((req, res) => {
-    // Filter branches to include only those saved by the current user.
-    res.json(
-      db.branches.filter(b =>
-        db.favourites.some(
-          f =>
-            f.userId === req.auth!.sub &&
-            f.branchId === b.id
-        )
-      )
-    );
+  asyncRoute(async (req, res) => {
+    const favourites = await prisma.favourite.findMany({
+      where: {
+        userId: req.auth!.sub
+      },
+      include: {
+        branch: true
+      }
+    });
+
+    // Return branch objects to preserve frontend compatibility.
+    res.json(favourites.map(favourite => favourite.branch));
   })
 );
 
-// POST: Add a hotel branch to the authenticated user's favourites.
+// POST /api/favourites/:branchId
+// Add a hotel branch to the authenticated user's favourites.
 router.post(
   '/:branchId',
   requireAuth,
-  handle((req, res) => {
-    // Check whether the selected hotel branch exists.
-    if (!db.branches.some(b => b.id === req.params.branchId))
-      throw Error('Branch not found.');
+  asyncRoute(async (req, res) => {
+    const branchId = String(req.params.branchId);
+    const userId = req.auth!.sub;
 
-    // Prevent adding the same branch to favourites more than once.
-    if (
-      !db.favourites.some(
-        f =>
-          f.userId === req.auth!.sub &&
-          f.branchId === req.params.branchId
-      )
-    )
-      db.favourites.push({
-        userId: req.auth!.sub,
-        branchId: String(req.params.branchId)
+    // Verify that the hotel branch exists.
+    const branch = await prisma.branch.findUnique({
+      where: {
+        id: branchId
+      }
+    });
+
+    if (!branch) {
+      res.status(404).json({
+        error: 'Branch not found.'
       });
+      return;
+    }
 
-    // Save the updated favourites to the database.
-    save();
+    // Upsert prevents duplicate favourites.
+    await prisma.favourite.upsert({
+      where: {
+        userId_branchId: {
+          userId,
+          branchId
+        }
+      },
+      update: {},
+      create: {
+        userId,
+        branchId
+      }
+    });
 
-    // Return a successful response.
     res.json({ ok: true });
   })
 );
 
-// DELETE: Remove a hotel branch from the authenticated user's favourites.
+// DELETE /api/favourites/:branchId
+// Remove a saved hotel branch belonging to the authenticated user.
 router.delete(
   '/:branchId',
   requireAuth,
-  handle((req, res) => {
-    // Remove only the matching favourite belonging to the current user.
-    db.favourites = db.favourites.filter(
-      f =>
-        !(
-          f.userId === req.auth!.sub &&
-          f.branchId === req.params.branchId
-        )
-    );
+  asyncRoute(async (req, res) => {
+    const branchId = String(req.params.branchId);
+    const userId = req.auth!.sub;
 
-    // Save the updated favourites to the database.
-    save();
+    // deleteMany succeeds even if the favourite was already removed.
+    await prisma.favourite.deleteMany({
+      where: {
+        userId,
+        branchId
+      }
+    });
 
-    // Return a successful response.
     res.json({ ok: true });
   })
 );
 
-// Export the favourites router for use in the main Express application.
+// Handle unexpected database errors.
+router.use(
+  (
+    error: unknown,
+    _req: AuthRequest,
+    res: Response,
+    _next: NextFunction
+  ) => {
+    console.error('Favourites API error:', error);
+
+    res.status(500).json({
+      error: 'Failed to process favourites request.'
+    });
+  }
+);
+
+// Export the favourites router.
 export default router;

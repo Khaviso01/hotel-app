@@ -37,6 +37,9 @@ export type Booking = {
   guests: number;
   total: number;
   status: 'pending' | 'confirmed' | 'cancelled';
+  paymentStatus?: 'pending' | 'success' | 'failed';
+  paymentReference?: string | null;
+  paidAt?: string | null;
   createdAt: string;
 };
 

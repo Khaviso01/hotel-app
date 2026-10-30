@@ -238,6 +238,7 @@ export function HotelDetails() {
 /**
  * Room Reservation Checkout & Booking Form Page View.
  */
+
 export function Checkout() {
   const { id } = useParams();
   const { data: room } = useData<Room>('/rooms/' + id);
@@ -247,29 +248,62 @@ export function Checkout() {
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState(2);
-  const [method, setMethod] = useState('Card (demo)');
   const [busy, setBusy] = useState(false);
+
+  // Keep a created booking so a failed payment initialization
+  // doesn't create a second reservation on retry.
+  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+
     if (!user) {
       toast('Sign in to complete your booking.');
       navigate('/login?next=' + encodeURIComponent('/checkout/' + id));
       return;
     }
+
+    if (busy) return;
+
     setBusy(true);
+
     try {
-      const booking = await send<Booking>('/bookings', 'POST', {
-        roomId: id,
-        checkIn,
-        checkOut,
-        guests,
+      let bookingId = pendingBookingId;
+
+      // Step 1: Create a booking if one hasn't been created yet.
+      if (!bookingId) {
+        const booking = await send<Booking>('/bookings', 'POST', {
+          roomId: id,
+          checkIn,
+          checkOut,
+          guests,
+        });
+
+        bookingId = booking.id;
+        setPendingBookingId(bookingId);
+      }
+
+      // Step 2: Initialize payment through our Express backend.
+      const payment = await send<{
+        bookingId: string;
+        reference: string;
+        authorizationUrl: string;
+      }>('/payments/initialize', 'POST', {
+        bookingId,
       });
-      toast('Booking request submitted!');
-      navigate('/confirmation/' + booking.id);
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
+
+      if (!payment.authorizationUrl) {
+        throw new Error('Paystack did not return a payment URL.');
+      }
+
+      // Step 3: Redirect to Paystack's hosted checkout.
+      window.location.assign(payment.authorizationUrl);
+    } catch (error) {
+      toast(
+        error instanceof Error
+          ? error.message
+          : 'Unable to start payment. Please try again.'
+      );
       setBusy(false);
     }
   };
@@ -279,14 +313,16 @@ export function Checkout() {
       <main className="container section">
         <PageTitle
           title="Complete Your Booking"
-          subtitle="Review your stay and confirm your reservation"
+          subtitle="Review your stay and proceed to secure payment"
         />
+
         {!room ? (
           <Loading />
         ) : (
           <form className="checkout-grid" onSubmit={submit}>
             <div className="panel">
               <h2>Guest & Stay Details</h2>
+
               <div className="form-grid">
                 <label>
                   Check-in
@@ -295,9 +331,11 @@ export function Checkout() {
                     required
                     min={new Date().toISOString().slice(0, 10)}
                     value={checkIn}
+                    disabled={busy || !!pendingBookingId}
                     onChange={(e) => setCheckIn(e.target.value)}
                   />
                 </label>
+
                 <label>
                   Check-out
                   <input
@@ -305,29 +343,40 @@ export function Checkout() {
                     required
                     min={checkIn || new Date().toISOString().slice(0, 10)}
                     value={checkOut}
+                    disabled={busy || !!pendingBookingId}
                     onChange={(e) => setCheckOut(e.target.value)}
                   />
                 </label>
+
                 <label>
                   Guests
                   <input
                     type="number"
                     min="1"
                     max={room.capacity}
+                    required
                     value={guests}
+                    disabled={busy || !!pendingBookingId}
                     onChange={(e) => setGuests(Number(e.target.value))}
                   />
                 </label>
               </div>
-              <PaymentMethods method={method} setMethod={setMethod} />
-              <button className="btn wide" disabled={busy}>
-                {busy ? 'Processing...' : 'Confirm Booking (Demo)'}
+
+              <button
+                type="submit"
+                className="btn wide"
+                disabled={busy}
+              >
+                {busy ? 'Redirecting to Paystack...' : 'Proceed to Secure Payment'}
               </button>
+
               <p className="muted">
-                No card details are collected and no payment is charged. Booking
-                requests remain pending until admin approval.
+                You will be redirected to Paystack to complete your
+                payment securely. Your booking will be confirmed
+                after successful payment verification.
               </p>
             </div>
+
             <BookingSummary
               room={room}
               checkIn={checkIn}
@@ -341,38 +390,88 @@ export function Checkout() {
   );
 }
 
+
 /**
  * Booking Submission Confirmation Screen.
  */
+
 export function Confirmation() {
   const { id } = useParams();
+  const { data: booking } = useData<Booking>(
+    '/bookings/' + id
+  );
+  const navigate = useNavigate();
+
+  if (!booking) {
+    return (
+      <Wrap>
+        <main className="container section">
+          <Loading />
+        </main>
+      </Wrap>
+    );
+  }
+
+  const paid = booking.paymentStatus === 'success';
+  const confirmed = booking.status === 'confirmed';
+  const cancelled = booking.status === 'cancelled';
 
   return (
     <Wrap>
       <main className="container section">
-        <div className="success-page">
-          <CheckCircle size={78} />
-          <h1>Booking Requested!</h1>
-          <p>
-            Your reservation has been submitted to The Retreat. An admin can
-            confirm it.
+        <div
+          className="panel"
+          style={{
+            maxWidth: 650,
+            margin: '40px auto',
+            padding: 32,
+            textAlign: 'center',
+          }}
+        >
+          <h1>
+            {cancelled
+              ? 'Booking Cancelled'
+              : paid && confirmed
+                ? 'Booking Confirmed!'
+                : 'Booking Pending'}
+          </h1>
+
+          <p className="muted">
+            {cancelled
+              ? 'This reservation has been cancelled.'
+              : paid && confirmed
+                ? 'Your payment was successful and your reservation is confirmed.'
+                : 'Your reservation is awaiting payment or confirmation.'}
           </p>
-          <div className="reference">
-            Booking Reference <strong>{id}</strong>
+
+          <div style={{ margin: '28px 0', textAlign: 'left' }}>
+            <p><strong>Booking Reference:</strong> {booking.id}</p>
+            <p><strong>Check-in:</strong> {booking.checkIn}</p>
+            <p><strong>Check-out:</strong> {booking.checkOut}</p>
+            <p><strong>Guests:</strong> {booking.guests}</p>
+            <p><strong>Total:</strong> R{booking.total.toLocaleString()}</p>
+            <p>
+              <strong>Booking Status:</strong>{' '}
+              {booking.status.toUpperCase()}
+            </p>
+            <p>
+              <strong>Payment Status:</strong>{' '}
+              {(booking.paymentStatus || 'pending').toUpperCase()}
+            </p>
           </div>
-          <div className="actions">
-            <Link className="btn" to={'/bookings/' + id}>
-              View Booking
-            </Link>
-            <Link className="btn outline" to="/">
-              Back to Home
-            </Link>
-          </div>
+
+          <button
+            className="btn"
+            onClick={() => navigate('/bookings')}
+          >
+            View My Bookings
+          </button>
         </div>
       </main>
     </Wrap>
   );
 }
+
 
 /**
  * Guest Reservations List Page View.

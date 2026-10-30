@@ -251,6 +251,11 @@
   ],
   "bookings": [],
   "notices": [],
-  "favourites": [],
+  "favourites": [
+    {
+      "userId": "cmvu5unle0000lcv4bvc1jk7s",
+      "branchId": "cape-town"
+    }
+  ],
   "reviews": []
 }

@@ -1,233 +1,420 @@
 
-import { Router } from 'express';
-import crypto from 'node:crypto';
-import { z } from 'zod';
-import type { Room } from '../models/types.js';
-import { roomImages } from '../services/seed.js';
-import { db, save } from '../services/database.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { handle, publicUser } from '../controllers/helpers.js';
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction
+} from 'express';
 
-// Initialize the Express router for admin operations.
+import { randomUUID } from 'node:crypto';
+import { BookingStatus, Prisma, Role } from '@prisma/client';
+import { z, ZodError } from 'zod';
+
+import { prisma } from '../services/prisma.js';
+import { roomImages } from '../services/seed.js';
+import {
+  requireAuth,
+  requireAdmin
+} from '../middleware/auth.js';
+
+// Initialize the admin router.
 const router = Router();
 
-// All routes below require authentication and admin authorization.
+// Protect every endpoint in this router.
+router.use(requireAuth, requireAdmin);
 
-// GET: Retrieve dashboard statistics, including bookings, revenue, and occupancy.
+// Handle asynchronous Express routes.
+function asyncRoute(
+  handler: (req: Request, res: Response) => Promise<void>
+) {
+  return (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    Promise.resolve(handler(req, res)).catch(next);
+  };
+}
+
+// Validation for hotel rooms.
+const roomSchema = z.object({
+  branchId: z.string().min(1),
+  name: z.string().trim().min(2),
+  type: z.string().trim().min(2),
+  capacity: z.number().int().positive(),
+  price: z.number().int().positive(),
+  available: z.boolean(),
+  image: z.string().optional(),
+  description: z.string().optional()
+});
+
+// Validation for hotel branches.
+const branchSchema = z.object({
+  name: z.string().trim().min(1),
+  city: z.string().trim().min(1),
+  address: z.string().trim().min(1),
+  description: z.string(),
+  image: z.string(),
+  rating: z.number().min(0).max(5),
+  amenities: z.array(z.string())
+});
+
+// Validation for notifications.
+const notificationSchema = z.object({
+  title: z.string().trim().min(1),
+  message: z.string().trim().min(1),
+  userId: z.string().optional()
+});
+
+// GET /api/admin/stats
+// Retrieve dashboard statistics from PostgreSQL.
 router.get(
   '/stats',
-  requireAuth,
-  requireAdmin,
-  (_req, res) => {
+  asyncRoute(async (_req, res) => {
+    const [
+      bookings,
+      confirmedBookings,
+      branches,
+      rooms,
+      users,
+      revenue
+    ] = await Promise.all([
+      prisma.booking.count(),
+      prisma.booking.count({
+        where: {
+          status: BookingStatus.CONFIRMED
+        }
+      }),
+      prisma.branch.count(),
+      prisma.room.count(),
+      prisma.user.count(),
+      prisma.booking.aggregate({
+        where: {
+          status: BookingStatus.CONFIRMED
+        },
+        _sum: {
+          total: true
+        }
+      })
+    ]);
+
+    // Preserve the existing dashboard calculation.
+    const occupancy = rooms
+      ? Math.round((confirmedBookings / rooms) * 100)
+      : 0;
+
     res.json({
-      bookings: db.bookings.length,
-      revenue: db.bookings
-        .filter(b => b.status === 'confirmed')
-        .reduce((s, b) => s + b.total, 0),
-      branches: db.branches.length,
-      rooms: db.rooms.length,
-      users: db.users.length,
-      occupancy: db.rooms.length
-        ? Math.round(
-            db.bookings.filter(b => b.status === 'confirmed').length /
-            db.rooms.length * 100
-          )
-        : 0
+      bookings,
+      revenue: revenue._sum.total ?? 0,
+      branches,
+      rooms,
+      users,
+      occupancy
     });
-  }
+  })
 );
 
-// GET: Retrieve all registered users without exposing sensitive information.
+// GET /api/admin/users
+// Return registered users without password hashes.
 router.get(
   '/users',
-  requireAuth,
-  requireAdmin,
-  (_req, res) => {
-    res.json(db.users.map(publicUser));
-  }
+  asyncRoute(async (_req, res) => {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json(
+      users.map(user => ({
+        ...user,
+        role: user.role === Role.ADMIN ? 'admin' : 'guest'
+      }))
+    );
+  })
 );
 
-// POST: Create a new hotel room.
+// POST /api/admin/rooms
+// Create a hotel room.
 router.post(
   '/rooms',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Validate the submitted room information.
-    const v = z.object({
-      branchId: z.string(),
-      name: z.string().min(2),
-      type: z.string().min(2),
-      capacity: z.number().int().positive(),
-      price: z.number().positive(),
-      available: z.boolean(),
-      image: z.string().optional(),
-      description: z.string().optional()
-    }).parse(req.body);
+  asyncRoute(async (req, res) => {
+    const values = roomSchema.parse(req.body);
 
-    // Ensure the selected hotel branch exists.
-    if (!db.branches.some(b => b.id === v.branchId))
-      throw Error('Unknown branch.');
+    const branch = await prisma.branch.findUnique({
+      where: {
+        id: values.branchId
+      }
+    });
 
-    // Create the room with a unique ID and default optional values.
-    const room: Room = {
-      id: crypto.randomUUID(),
-      ...v,
-      image: v.image || roomImages[0],
-      description: v.description || ''
-    };
+    if (!branch) {
+      res.status(404).json({
+        error: 'Unknown branch.'
+      });
+      return;
+    }
 
-    // Save the new room and return its details.
-    db.rooms.push(room);
-    save();
+    const room = await prisma.room.create({
+      data: {
+        id: randomUUID(),
+        branchId: values.branchId,
+        name: values.name,
+        type: values.type,
+        capacity: values.capacity,
+        price: values.price,
+        available: values.available,
+        image: values.image || roomImages[0],
+        description: values.description || ''
+      }
+    });
 
     res.status(201).json(room);
   })
 );
 
-// PATCH: Update an existing hotel's room information.
+// PATCH /api/admin/rooms/:id
+// Update an existing room.
 router.patch(
   '/rooms/:id',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Find the room using its ID.
-    const r = db.rooms.find(r => r.id === req.params.id);
+  asyncRoute(async (req, res) => {
+    const roomId = String(req.params.id);
+    const values = roomSchema.partial().parse(req.body);
 
-    if (!r)
-      throw Error('Room not found.');
+    const existing = await prisma.room.findUnique({
+      where: {
+        id: roomId
+      }
+    });
 
-    // Validate only the fields provided for updating.
-    const v = z.object({
-      branchId: z.string().optional(),
-      name: z.string().min(2).optional(),
-      type: z.string().min(2).optional(),
-      capacity: z.number().int().positive().optional(),
-      price: z.number().positive().optional(),
-      available: z.boolean().optional(),
-      image: z.string().optional(),
-      description: z.string().optional()
-    }).parse(req.body);
+    if (!existing) {
+      res.status(404).json({
+        error: 'Room not found.'
+      });
+      return;
+    }
 
-    // Apply changes and save the updated room.
-    Object.assign(r, v);
-    save();
+    if (values.branchId) {
+      const branch = await prisma.branch.findUnique({
+        where: {
+          id: values.branchId
+        }
+      });
 
-    res.json(r);
+      if (!branch) {
+        res.status(404).json({
+          error: 'Unknown branch.'
+        });
+        return;
+      }
+    }
+
+    const room = await prisma.room.update({
+      where: {
+        id: roomId
+      },
+      data: values
+    });
+
+    res.json(room);
   })
 );
 
-// DELETE: Remove a room if it has no active bookings.
+// DELETE /api/admin/rooms/:id
+// Delete a room only when it has no booking history.
 router.delete(
   '/rooms/:id',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Prevent deletion when the room has bookings that are not cancelled.
-    if (
-      db.bookings.some(
-        b => b.roomId === req.params.id && b.status !== 'cancelled'
-      )
-    )
-      throw Error('Cancel active bookings before deleting this room.');
+  asyncRoute(async (req, res) => {
+    const roomId = String(req.params.id);
 
-    // Remove the room and save the changes.
-    db.rooms = db.rooms.filter(r => r.id !== req.params.id);
-    save();
+    const room = await prisma.room.findUnique({
+      where: {
+        id: roomId
+      }
+    });
+
+    if (!room) {
+      res.status(404).json({
+        error: 'Room not found.'
+      });
+      return;
+    }
+
+    const bookingCount = await prisma.booking.count({
+      where: {
+        roomId
+      }
+    });
+
+    if (bookingCount > 0) {
+      res.status(409).json({
+        error:
+          'This room has booking history. Mark it unavailable instead of deleting it.'
+      });
+      return;
+    }
+
+    await prisma.room.delete({
+      where: {
+        id: roomId
+      }
+    });
 
     res.json({ ok: true });
   })
 );
 
-// POST: Add a new hotel branch.
+// POST /api/admin/branches
+// Create a hotel branch.
 router.post(
   '/branches',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Validate the new branch information.
-    const v = z.object({
-      name: z.string(),
-      city: z.string(),
-      address: z.string(),
-      description: z.string(),
-      image: z.string(),
-      rating: z.number().min(0).max(5),
-      amenities: z.array(z.string())
-    }).parse(req.body);
+  asyncRoute(async (req, res) => {
+    const values = branchSchema.parse(req.body);
 
-    // Generate a unique branch ID.
-    const b = {
-      id: crypto.randomUUID(),
-      ...v
-    };
+    const branch = await prisma.branch.create({
+      data: {
+        id: randomUUID(),
+        ...values
+      }
+    });
 
-    // Store the branch and return the created record.
-    db.branches.push(b);
-    save();
-
-    res.status(201).json(b);
+    res.status(201).json(branch);
   })
 );
 
-// PATCH: Update an existing hotel branch.
+// PATCH /api/admin/branches/:id
+// Update a hotel branch.
 router.patch(
   '/branches/:id',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Find the branch using its ID.
-    const b = db.branches.find(b => b.id === req.params.id);
+  asyncRoute(async (req, res) => {
+    const branchId = String(req.params.id);
+    const values = branchSchema.partial().parse(req.body);
 
-    if (!b)
-      throw Error('Branch not found.');
+    const existing = await prisma.branch.findUnique({
+      where: {
+        id: branchId
+      }
+    });
 
-    // Apply the submitted changes to the branch.
-    Object.assign(b, req.body);
-    save();
+    if (!existing) {
+      res.status(404).json({
+        error: 'Branch not found.'
+      });
+      return;
+    }
 
-    res.json(b);
+    const branch = await prisma.branch.update({
+      where: {
+        id: branchId
+      },
+      data: values
+    });
+
+    res.json(branch);
   })
 );
 
-// POST: Send notifications to a specific user or all guest users.
+// POST /api/admin/notifications
+// Send notifications to one user or all guests.
 router.post(
   '/notifications',
-  requireAuth,
-  requireAdmin,
-  handle((req, res) => {
-    // Validate the notification details.
-    const v = z.object({
-      title: z.string(),
-      message: z.string(),
-      userId: z.string().optional()
-    }).parse(req.body);
+  asyncRoute(async (req, res) => {
+    const values = notificationSchema.parse(req.body);
 
-    // Determine whether to notify one user or all guests.
-    const targets = v.userId
-      ? [v.userId]
-      : db.users
-          .filter(u => u.role === 'guest')
-          .map(u => u.id);
+    if (values.userId) {
+      const user = await prisma.user.findUnique({
+        where: {
+          id: values.userId
+        }
+      });
 
-    // Create a notification record for each selected user.
-    targets.forEach(userId =>
-      db.notices.push({
-        id: crypto.randomUUID(),
-        userId,
-        title: v.title,
-        message: v.message,
-        read: false,
-        createdAt: new Date().toISOString()
-      })
-    );
+      if (!user) {
+        res.status(404).json({
+          error: 'User not found.'
+        });
+        return;
+      }
 
-    // Save notifications and return the number of recipients.
-    save();
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          title: values.title,
+          message: values.message
+        }
+      });
 
-    res.json({ sent: targets.length });
+      res.json({ sent: 1 });
+      return;
+    }
+
+    // Send notifications to all guest accounts.
+    const guests = await prisma.user.findMany({
+      where: {
+        role: Role.GUEST
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (guests.length === 0) {
+      res.json({ sent: 0 });
+      return;
+    }
+
+    const result = await prisma.notification.createMany({
+      data: guests.map(guest => ({
+        userId: guest.id,
+        title: values.title,
+        message: values.message,
+        read: false
+      }))
+    });
+
+    res.json({
+      sent: result.count
+    });
   })
 );
 
-// Export the admin router for use in the main Express application.
+// Handle validation and database errors.
+router.use(
+  (
+    error: unknown,
+    _req: Request,
+    res: Response,
+    _next: NextFunction
+  ) => {
+    if (error instanceof ZodError) {
+      res.status(400).json({
+        error: 'Invalid admin request.',
+        details: error.flatten()
+      });
+      return;
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      res.status(409).json({
+        error:
+          'This record is referenced by other records and cannot be deleted or changed.'
+      });
+      return;
+    }
+
+    console.error('Admin API error:', error);
+
+    res.status(500).json({
+      error: 'Failed to process admin request.'
+    });
+  }
+);
+
 export default router;
