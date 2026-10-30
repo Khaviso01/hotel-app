@@ -33,8 +33,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
+    console.error('Failed to add hotel policies:', error);
   })
   .finally(async () => {
     await prisma.$disconnect();
