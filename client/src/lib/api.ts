@@ -14,6 +14,7 @@ export type Branch = {
   image: string;
   rating: number;
   amenities: string[];
+  policies: string[];
 };
 
 export type Room = {

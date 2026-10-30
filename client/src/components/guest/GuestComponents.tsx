@@ -21,8 +21,10 @@ import { useApp } from '../../context/AppContext';
 import { Stars, Status } from '../shared/Shared';
 
 // Guest component 1: city, hotel, date, and guest search form.
+
 export function SearchWidget({ branches }: { branches: Branch[] }) {
   const navigate = useNavigate();
+
   const [city, setCity] = useState('');
   const [branch, setBranch] = useState('');
   const [checkIn, setCheckIn] = useState('');
@@ -30,19 +32,51 @@ export function SearchWidget({ branches }: { branches: Branch[] }) {
   const [guests, setGuests] = useState(2);
   const [rooms, setRooms] = useState(1);
 
-  const submit = (e: FormEvent) => {
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [roomType, setRoomType] = useState('');
+  const [sort, setSort] = useState('price_asc');
+  const [error, setError] = useState('');
+
+  const today = new Date().toLocaleDateString('en-CA');
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    navigate(
-      '/branches?' +
-        new URLSearchParams({
-          city,
-          branch,
-          checkIn,
-          checkOut,
-          guests: String(guests),
-          rooms: String(rooms),
-        })
-    );
+    setError('');
+
+    if (Boolean(checkIn) !== Boolean(checkOut)) {
+      setError('Please select both check-in and check-out dates.');
+      return;
+    }
+
+    if (checkIn && checkOut && checkOut <= checkIn) {
+      setError('Check-out must be after check-in.');
+      return;
+    }
+
+    if (
+      minPrice !== '' &&
+      maxPrice !== '' &&
+      Number(minPrice) > Number(maxPrice)
+    ) {
+      setError('Maximum price must be greater than minimum price.');
+      return;
+    }
+
+    const params = new URLSearchParams({
+      city,
+      branch,
+      checkIn,
+      checkOut,
+      guests: String(guests),
+      rooms: String(rooms),
+      minPrice,
+      maxPrice,
+      roomType,
+      sort
+    });
+
+    navigate(`/branches?${params.toString()}`);
   };
 
   return (
@@ -58,13 +92,17 @@ export function SearchWidget({ branches }: { branches: Branch[] }) {
         >
           <option value="">All Cities</option>
           {[...new Set(branches.map((b) => b.city))].map((c) => (
-            <option key={c}>{c}</option>
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
       </label>
+
       <label>
         <span>Select a Hotel</span>
-        <select value={branch} onChange={(e) => setBranch(e.target.value)}>
+        <select
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+        >
           <option value="">All Hotels</option>
           {branches
             .filter((b) => !city || b.city === city)
@@ -75,26 +113,34 @@ export function SearchWidget({ branches }: { branches: Branch[] }) {
             ))}
         </select>
       </label>
+
       <label>
         <span>Check-in</span>
         <input
           aria-label="Check-in"
           type="date"
-          min={new Date().toISOString().slice(0, 10)}
+          min={today}
           value={checkIn}
-          onChange={(e) => setCheckIn(e.target.value)}
+          onChange={(e) => {
+            setCheckIn(e.target.value);
+            if (checkOut && e.target.value >= checkOut) {
+              setCheckOut('');
+            }
+          }}
         />
       </label>
+
       <label>
         <span>Check-out</span>
         <input
           aria-label="Check-out"
           type="date"
-          min={checkIn || new Date().toISOString().slice(0, 10)}
+          min={checkIn || today}
           value={checkOut}
           onChange={(e) => setCheckOut(e.target.value)}
         />
       </label>
+
       <label className="compact">
         <span>Guests / Rooms</span>
         <div className="two-inputs">
@@ -116,12 +162,60 @@ export function SearchWidget({ branches }: { branches: Branch[] }) {
           />
         </div>
       </label>
+
+      <label>
+        <span>Minimum Price (R)</span>
+        <input
+          type="number"
+          min="0"
+          placeholder="Any minimum"
+          value={minPrice}
+          onChange={(e) => setMinPrice(e.target.value)}
+        />
+      </label>
+
+      <label>
+        <span>Maximum Price (R)</span>
+        <input
+          type="number"
+          min="0"
+          placeholder="Any maximum"
+          value={maxPrice}
+          onChange={(e) => setMaxPrice(e.target.value)}
+        />
+      </label>
+
+      <label>
+        <span>Room Type</span>
+        <input
+          type="text"
+          placeholder="e.g. Deluxe, Suite"
+          value={roomType}
+          onChange={(e) => setRoomType(e.target.value)}
+        />
+      </label>
+
+      <label>
+        <span>Sort By</span>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+          <option value="rating_desc">Highest Rated</option>
+        </select>
+      </label>
+
+      {error && <p role="alert">{error}</p>}
+
       <button className="btn" type="submit">
         <Search size={17} /> Find Hotels
       </button>
     </form>
   );
 }
+
 
 // Guest component 2: photographic branch card.
 export function BranchCard({ branch }: { branch: Branch }) {

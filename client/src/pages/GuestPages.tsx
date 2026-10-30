@@ -12,12 +12,13 @@ import {
   Stars,
   Status,
 } from '../components/shared/Shared';
+import { HotelFacilities } from '../components/guest/HotelFacilities';
+import { HotelPolicies } from '../components/guest/HotelPolicies';
 import {
   SearchWidget,
   BranchCard,
   FavouriteButton,
   RoomCard,
-  Amenities,
   HotelGallery,
   BookingSummary,
   PaymentMethods,
@@ -114,15 +115,96 @@ export function Home() {
 /**
  * Branch Listing & Filter Search Page View.
  */
+
 export function Branches() {
   const [params] = useSearchParams();
-  const { data } = useData<Branch[]>('/branches');
-  const city = params.get('city') || '';
-  const branch = params.get('branch') || '';
+  const { data: branches } = useData<Branch[]>('/branches');
 
-  const filtered = data?.filter(
-    (b) => (!city || b.city === city) && (!branch || b.id === branch)
-  );
+  const city = params.get('city') || '';
+  const branchId = params.get('branch') || '';
+
+  const searchQuery = params.toString();
+  const hasRoomFilters = [
+    'minPrice',
+    'maxPrice',
+    'roomType',
+    'guests',
+    'checkIn',
+    'checkOut',
+    'sort'
+  ].some(key => params.has(key) && params.get(key) !== '');
+
+  const [matchingRooms, setMatchingRooms] = useState<
+    (Room & { branch: Branch })[]
+  >([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  useEffect(() => {
+    if (!hasRoomFilters) {
+      setMatchingRooms([]);
+      setSearching(false);
+      setSearchError('');
+      return;
+    }
+
+    let active = true;
+
+    const query = new URLSearchParams();
+
+    // The backend searches location by city, name or address.
+    if (city) query.set('location', city);
+
+    for (const key of [
+      'minPrice',
+      'maxPrice',
+      'roomType',
+      'guests',
+      'checkIn',
+      'checkOut',
+      'sort'
+    ]) {
+      const value = params.get(key);
+      if (value) query.set(key, value);
+    }
+
+    setSearching(true);
+    setSearchError('');
+
+    api<{
+      count: number;
+      rooms: (Room & { branch: Branch })[];
+    }>(`/search?${query.toString()}`)
+      .then(result => {
+        if (active) {
+          setMatchingRooms(result.rooms);
+          setSearching(false);
+        }
+      })
+      .catch(error => {
+        if (active) {
+          setSearchError(
+            error instanceof Error ? error.message : 'Search failed.'
+          );
+          setSearching(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [searchQuery, hasRoomFilters, city]);
+
+  const filtered = branches?.filter(b => {
+    if (city && b.city !== city) return false;
+    if (branchId && b.id !== branchId) return false;
+
+    if (hasRoomFilters) {
+      return matchingRooms.some(room => room.branchId === b.id);
+    }
+
+    return true;
+  });
 
   return (
     <Wrap>
@@ -135,18 +217,33 @@ export function Branches() {
               : 'Discover all The Retreat destinations'
           }
         />
-        <div className="branch-grid">
-          {filtered?.map((b) => (
-            <BranchCard key={b.id} branch={b} />
-          ))}
-        </div>
-        {filtered?.length === 0 && (
-          <Empty message="No hotels match your search. Try another city." />
+
+        {searching ? (
+          <Loading />
+        ) : searchError ? (
+          <p className="error" role="alert">{searchError}</p>
+        ) : (
+          <>
+            <p className="muted">
+              {filtered?.length ?? 0} matching hotel(s)
+            </p>
+
+            <div className="branch-grid">
+              {filtered?.map(b => (
+                <BranchCard key={b.id} branch={b} />
+              ))}
+            </div>
+
+            {filtered?.length === 0 && (
+              <Empty message="No hotels match your search. Try adjusting your filters." />
+            )}
+          </>
         )}
       </main>
     </Wrap>
   );
 }
+
 
 /**
  * Individual Hotel Branch Details & Room Selection Page View.
@@ -187,7 +284,8 @@ export function HotelDetails() {
                 <h2>Welcome to {b.name}</h2>
                 <p>{b.description}</p>
                 <h3>Facilities & Amenities</h3>
-                <Amenities items={b.amenities} />
+                <HotelFacilities items={b.amenities} />
+                <HotelPolicies items={b.policies ?? []} />
                 <h3>Location</h3>
                 <div className="location-card">
                   <MapPin />
