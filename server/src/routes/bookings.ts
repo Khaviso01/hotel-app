@@ -11,6 +11,16 @@ const router = Router();
 const DAY_MS = 86_400_000;
 const SERVICE_FEE = 150;
 
+class BookingCancellationError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number = 409
+  ) {
+    super(message);
+    this.name = 'BookingCancellationError';
+  }
+}
+
 // Validate booking details from the frontend.
 const bookingSchema = z.object({
   roomId: z.string().min(1),

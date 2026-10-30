@@ -52,6 +52,7 @@ model Branch {
   favourites  Favourite[]
   amenities String[] @default([])
   policies String[] @default([])
+  cancellationHours Int @default(48)
 }
 
 model Room {
