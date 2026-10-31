@@ -21,7 +21,7 @@ import searchRoutes from './routes/search.js';
 const app = express();
 
 // Enable CORS for requests from the client application
-app.use(cors({ origin: CLIENT_URL }));
+app.use(cors({ origin: CLIENT_URL, credentials: true }));
 
 // Paystack webhook route must be defined before the JSON body parser middleware
 app.use(
