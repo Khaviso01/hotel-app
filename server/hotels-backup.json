@@ -1,0 +1,279 @@
+{
+  "branches": [
+    {
+      "id": "cape-town",
+      "name": "The Retreat — Cape Town",
+      "city": "Cape Town",
+      "address": "Sea Point, Cape Town, South Africa",
+      "description": "Coastal luxury, ocean views and memorable stays.",
+      "image": "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=85",
+      "rating": 4.8,
+      "amenities": [
+        "Free WiFi",
+        "Pool",
+        "Spa",
+        "Restaurant",
+        "Gym"
+      ],
+      "policies": [
+        "Check-in: From 6:00",
+        "Check-out: Before 00:00",
+        "Cancellation: Free cancellation up to 48 hours before check-in",
+        "Children: Children of all ages are welcome",
+        "Pets: Pets are not allowed",
+        "Smoking: Smoking is not permitted inside rooms"
+      ],
+      "cancellationHours": 48
+    },
+    {
+      "id": "durban",
+      "name": "The Retreat — Durban",
+      "city": "Durban",
+      "address": "Umhlanga, Durban, South Africa",
+      "description": "A warm seaside escape with contemporary comfort.",
+      "image": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=85",
+      "rating": 4.6,
+      "amenities": [
+        "Free WiFi",
+        "Pool",
+        "Breakfast",
+        "Parking"
+      ],
+      "policies": [
+        "Check-in: From 6:00",
+        "Check-out: Before 00:00",
+        "Cancellation: Free cancellation up to 48 hours before check-in",
+        "Children: Children of all ages are welcome",
+        "Pets: Pets are not allowed",
+        "Smoking: Smoking is not permitted inside rooms"
+      ],
+      "cancellationHours": 48
+    },
+    {
+      "id": "pretoria",
+      "name": "The Retreat — Pretoria",
+      "city": "Pretoria",
+      "address": "Menlyn, Pretoria, South Africa",
+      "description": "Elegant urban hospitality for business and leisure.",
+      "image": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=85",
+      "rating": 4.5,
+      "amenities": [
+        "Free WiFi",
+        "Restaurant",
+        "Gym",
+        "Parking"
+      ],
+      "policies": [
+        "Check-in: From 6:00",
+        "Check-out: Before 00:00",
+        "Cancellation: Free cancellation up to 48 hours before check-in",
+        "Children: Children of all ages are welcome",
+        "Pets: Pets are not allowed",
+        "Smoking: Smoking is not permitted inside rooms"
+      ],
+      "cancellationHours": 48
+    },
+    {
+      "id": "kruger",
+      "name": "The Retreat — Kruger",
+      "city": "Kruger",
+      "address": "Hazyview, Mpumalanga, South Africa",
+      "description": "Nature-inspired stays near the Kruger region.",
+      "image": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=85",
+      "rating": 4.7,
+      "amenities": [
+        "Pool",
+        "Spa",
+        "Safari",
+        "Restaurant"
+      ],
+      "policies": [
+        "Check-in: From 6:00",
+        "Check-out: Before 00:00",
+        "Cancellation: Free cancellation up to 48 hours before check-in",
+        "Children: Children of all ages are welcome",
+        "Pets: Pets are not allowed",
+        "Smoking: Smoking is not permitted inside rooms"
+      ],
+      "cancellationHours": 48
+    }
+  ],
+  "rooms": [
+    {
+      "id": "cape-town-room-1",
+      "branchId": "cape-town",
+      "name": "Deluxe Room",
+      "type": "Deluxe",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 1850,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "cape-town-room-2",
+      "branchId": "cape-town",
+      "name": "Executive Room",
+      "type": "Executive",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 2250,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "cape-town-room-3",
+      "branchId": "cape-town",
+      "name": "Family Room",
+      "type": "Family",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 4,
+      "price": 2950,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "cape-town-room-4",
+      "branchId": "cape-town",
+      "name": "Ocean View Suite",
+      "type": "Suite",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 3450,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "durban-room-1",
+      "branchId": "durban",
+      "name": "Deluxe Room",
+      "type": "Deluxe",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 1650,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "durban-room-2",
+      "branchId": "durban",
+      "name": "Executive Room",
+      "type": "Executive",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 2050,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "durban-room-3",
+      "branchId": "durban",
+      "name": "Family Room",
+      "type": "Family",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 4,
+      "price": 2750,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "durban-room-4",
+      "branchId": "durban",
+      "name": "Ocean View Suite",
+      "type": "Suite",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 3250,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "pretoria-room-1",
+      "branchId": "pretoria",
+      "name": "Deluxe Room",
+      "type": "Deluxe",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 1450,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "pretoria-room-2",
+      "branchId": "pretoria",
+      "name": "Executive Room",
+      "type": "Executive",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 1850,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "pretoria-room-3",
+      "branchId": "pretoria",
+      "name": "Family Room",
+      "type": "Family",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 4,
+      "price": 2550,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "pretoria-room-4",
+      "branchId": "pretoria",
+      "name": "Ocean View Suite",
+      "type": "Suite",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 3050,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "kruger-room-1",
+      "branchId": "kruger",
+      "name": "Deluxe Room",
+      "type": "Deluxe",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 1950,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "kruger-room-2",
+      "branchId": "kruger",
+      "name": "Executive Room",
+      "type": "Executive",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 2350,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "kruger-room-3",
+      "branchId": "kruger",
+      "name": "Family Room",
+      "type": "Family",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 4,
+      "price": 3050,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=85"
+    },
+    {
+      "id": "kruger-room-4",
+      "branchId": "kruger",
+      "name": "Ocean View Suite",
+      "type": "Suite",
+      "description": "Beautifully appointed room with premium amenities.",
+      "capacity": 2,
+      "price": 3550,
+      "available": true,
+      "image": "https://images.unsplash.com/photo-1591088398332-8a7791972843?auto=format&fit=crop&w=1200&q=85"
+    }
+  ]
+}
