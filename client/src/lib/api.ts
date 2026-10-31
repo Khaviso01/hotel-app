@@ -73,7 +73,8 @@ export const money = (amount: number) => 'R' + amount.toLocaleString('en-ZA');
  */
 export const api = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
   const token = localStorage.getItem('retreat_token');
-  const response = await fetch('/api' + path, {
+  const API_URL = import.meta.env.VITE_API_URL || '/api';
+  const response = await fetch(API_URL + path, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
