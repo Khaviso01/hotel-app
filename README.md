@@ -1,162 +1,173 @@
 # The Retreat Hotels & Resorts
 
+<<<<<<< HEAD
 **The Retreat Hotels & Resorts** is a full-stack hotel booking application built with React, TypeScript, Node.js, and Express. It features a responsive guest website, an admin dashboard, Google OAuth authentication, secure Paystack payments, and hotel reservation management. The application uses Prisma ORM with PostgreSQL hosted on Neon for persistent data storage, with the frontend deployed on Vercel and the backend on Render.
+=======
+A full-stack hotel booking application with a responsive guest website, an administration dashboard, and a TypeScript REST API. Guests can discover hotel branches, reserve rooms, and pay online, while administrators manage accommodation and booking operations.
+>>>>>>> 05af10b (docs: update README with full-stack features and deployment setup)
 
-# Preview
+**Live application:** https://the-retreat-hotel.vercel.app  
+**API health check:** https://the-retreat-api.onrender.com/api/health
 
-<img src="client/assets/the-retreat-preview.png" alt="Alt text" width="500">
+## Preview
+
+<img src="client/assets/the-retreat-preview.png" alt="Alt text" width="600">
 
 ## Tech stack
 
 | Area | Technologies |
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite, React Router, Context API, CSS, Lucide React |
-| Backend | Node.js, Express, TypeScript, Zod, JWT, bcryptjs, CORS, dotenv |
-| Storage | Local `data.json` file, initialized from `server/src/services/seed.ts` |
-| Tooling | npm, tsx, TypeScript, concurrently |
+| Backend | Node.js, Express, TypeScript, Zod, JWT, bcryptjs, CORS |
+| Authentication | Email/password and Google OAuth |
+| Database | PostgreSQL (Neon), Prisma ORM |
+| Payments | Paystack |
+| Hosting | Vercel (frontend), Render (API), Neon (database) |
+| Development | npm, TypeScript, tsx |
 
-> This version does **not** use PostgreSQL, Prisma, Redux Toolkit, OAuth, or live payment processing.
+## Features and responsibilities
+
+### Guests
+
+- Browse hotel branches, photo galleries, room types, prices, amenities, and policies.
+- Search and filter accommodation by location, dates, guest count, and other available filters.
+- Register and sign in using email/password or Google OAuth.
+- Save favourite branches and share accommodation details.
+- Book rooms, pay through Paystack, and review booking status and history.
+- Cancel eligible bookings, submit reviews, and read notifications.
+
+### Administrators
+
+- Review booking, room, branch, and user information in the admin dashboard.
+- Create, edit, and delete rooms; create and update hotel branches.
+- Review reservations and manage permitted booking statuses.
+- View registered users and guest reviews.
+- Send guest notifications and access reports and settings screens.
+
+> Some dashboard settings are interface-only; check the corresponding API route before treating an action as fully implemented.
 
 ## Requirements
 
-- Node.js 20 or later and npm
-- Git (only if cloning from a repository)
-
-Check your installation:
-
-```powershell
-node --version
-npm --version
-```
+- Node.js 20 or newer and npm
+- A PostgreSQL database (local or hosted)
+- Google OAuth web-client credentials for Google Sign-In
+- Paystack credentials for payment processing
 
 ## Run locally
 
-1. Download/extract the project, or clone **your actual The Retreat repository** and open its root folder.
-2. Install dependencies from the project root:
+1. Clone the repository and install dependencies:
 
-   ```powershell
+   ```bash
+   git clone https://github.com/Khaviso01/the-retreat-hotel.git
+   cd the-retreat-hotel
    npm install
-   npm run install:all
    ```
 
-3. Create the server environment file:
+   Install workspace dependencies separately if your root install does not install them:
 
-   ```powershell
-   Copy-Item server\.env.example server\.env
+   ```bash
+   npm install --prefix client
+   npm install --prefix server
    ```
 
-4. Edit `server/.env` and replace the example JWT secret. Generate a random value with:
-
-   ```powershell
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   ```
-
-   The environment file contains these settings:
+2. Create `server/.env` and configure the backend. **Use your own credentials; never commit `.env` files.**
 
    ```dotenv
    PORT=4000
-   JWT_SECRET=replace-with-a-long-random-secret
    CLIENT_URL=http://localhost:5173
+   SERVER_URL=http://localhost:4000
+   DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require
+   JWT_SECRET=replace-with-a-long-random-secret
+   GOOGLE_CLIENT_ID=your-google-client-id
+   GOOGLE_CLIENT_SECRET=your-google-client-secret
+   PAYSTACK_SECRET_KEY=your-paystack-secret-key
    ```
 
-5. Start the frontend and backend together:
+   The database URL is an example, not a working connection string. For local Google OAuth, register `http://localhost:4000/api/auth/google/callback` as an authorized redirect URI in Google Cloud.
 
-   ```powershell
-   npm run dev
+3. Configure the frontend in `client/.env`:
+
+   ```dotenv
+   VITE_API_URL=http://localhost:4000/api
+   ```
+
+4. Apply the existing Prisma migrations from the server workspace:
+
+   ```bash
+   cd server
+   npx prisma generate
+   npx prisma migrate deploy
+   cd ..
+   ```
+
+   Migrations create the schema; they do not automatically populate hotel listings. Import or seed the branch and room data using the scripts provided by your current repository version.
+
+5. Start the application. If your root `package.json` has a combined `dev` script, run `npm run dev`. Otherwise, open two terminals:
+
+   ```bash
+   npm run dev --prefix server
+   ```
+
+   ```bash
+   npm run dev --prefix client
    ```
 
 6. Open the application:
 
-   | Page/service | URL |
+   | Service | Local URL |
    | --- | --- |
    | Guest website | http://localhost:5173 |
    | Admin dashboard | http://localhost:5173/admin |
    | API health check | http://localhost:4000/api/health |
 
-Press `Ctrl+C` in the terminal to stop the development servers.
+   Admin pages require an account with the `admin` role. Do not publish administrator passwords in the README.
 
-## Features
+## Authentication
 
-### Guest website
+Email/password accounts use hashed passwords and JWT-based sessions. Google OAuth uses Google's identity verification and an application-specific callback to sign in Google-linked accounts.
 
-- Browse hotel branches and rooms with photographs, descriptions, amenities, and prices.
-- Filter rooms by branch and guest capacity.
-- Register, sign in, and view the authenticated account.
-- Create booking requests, view booking history and details, and cancel bookings.
-- Save and remove favourite hotel branches.
-- View and submit reviews.
-- Read notifications and mark them as read.
+- `GET /api/auth/google` starts the Google authorization flow.
+- `GET /api/auth/google/callback` processes Google's response.
+- `POST /api/auth/google/exchange` exchanges a short-lived login code for an application session.
 
-### Admin dashboard
+A Google account with the same email as an existing password-only account is **not automatically linked**. Sign in with the original method unless a secure account-linking flow has been implemented.
 
-- View booking, revenue, branch, room, user, and occupancy statistics.
-- Create, edit, and delete rooms.
-- Create and edit hotel branches.
-- View bookings and update booking statuses.
-- View registered users and reviews.
-- Send notifications to one user or all guest accounts.
-- Access reports and settings interfaces; not every setting has a dedicated backend operation.
+## Booking and payments
 
-## Booking rules
+Guests select a room, enter stay dates and guest count, and create a reservation. The backend validates booking details and initiates payment through Paystack. The frontend returns through `/payment/callback`, while the backend is responsible for verifying payment status before confirming a paid booking.
 
-Bookings require authentication. The backend checks that the selected room exists and is available, the check-out date follows check-in, guest count fits room capacity, and the requested dates do not overlap an existing non-cancelled booking.
-
-```text
-Total (ZAR) = room price per night × number of nights + R150 service fee
-```
-
-New bookings start as `pending`. Admins can set `pending`, `confirmed`, or `cancelled`; guests can cancel their own bookings. **No payment is collected.**
-
-## Starter data and admin access
-
-On the first run, `server/src/services/database.ts` creates `data.json` from `server/src/services/seed.ts` if the file does not already exist.
-
-The starter data includes four branches—Cape Town, Durban, Pretoria, and Kruger—and four room types per branch (16 rooms total).
-
-**Development-only admin account:**
-
-```text
-Email:    admin@theretreat.test
-Password: Admin123!
-```
-
-Do not deploy with these credentials. New registrations receive the `guest` role. Existing `data.json` records are retained on restart; editing `seed.ts` does not overwrite them.
+**Important:** A successful payment-page redirect alone does not prove a payment was verified. Test the complete payment and booking-status flow in your Paystack test environment before accepting live payments. Consult the current backend for pricing, service fees, availability rules, and cancellation conditions.
 
 ## API overview
 
-All routes are prefixed with `/api`. Protected requests use `Authorization: Bearer <token>`.
+All endpoints are prefixed with `/api`. Protected routes use `Authorization: Bearer <token>`.
 
-| Method | Endpoint | Access | Purpose |
-| --- | --- | --- | --- |
-| GET | `/api/health` | Public | Health check |
-| POST | `/api/auth/register` | Public | Register guest |
-| POST | `/api/auth/login` | Public | Sign in |
-| GET | `/api/auth/me` | Authenticated | Current user |
-| GET | `/api/branches` | Public | All branches |
-| GET | `/api/branches/:id` | Public | Branch details |
-| GET | `/api/rooms` | Public | Rooms; optional `branchId` and `guests` filters |
-| GET | `/api/rooms/:id` | Public | Room details |
-| POST | `/api/bookings` | Authenticated | Create booking |
-| GET | `/api/bookings` | Authenticated | Own bookings; all for admin |
-| GET | `/api/bookings/:id` | Authenticated | Accessible booking details |
-| PATCH | `/api/bookings/:id` | Authenticated | Change permitted booking status |
-| GET | `/api/favourites` | Authenticated | Favourite branches |
-| POST | `/api/favourites/:branchId` | Authenticated | Add favourite |
-| DELETE | `/api/favourites/:branchId` | Authenticated | Remove favourite |
-| GET | `/api/reviews` | Public | List reviews |
-| POST | `/api/reviews` | Authenticated | Submit review |
-| GET | `/api/notifications` | Authenticated | Own notifications |
-| PATCH | `/api/notifications/:id/read` | Authenticated | Mark as read |
-| GET | `/api/admin/stats` | Admin | Dashboard statistics |
-| GET | `/api/admin/users` | Admin | Registered users |
-| POST | `/api/admin/rooms` | Admin | Add room |
-| PATCH | `/api/admin/rooms/:id` | Admin | Edit room |
-| DELETE | `/api/admin/rooms/:id` | Admin | Delete room |
-| POST | `/api/admin/branches` | Admin | Add branch |
-| PATCH | `/api/admin/branches/:id` | Admin | Edit branch |
-| POST | `/api/admin/notifications` | Admin | Send notifications |
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | API health check |
+| POST | `/api/auth/register` | Create guest account |
+| POST | `/api/auth/login` | Email/password sign-in |
+| GET | `/api/auth/google` | Start Google OAuth |
+| GET | `/api/auth/google/callback` | Google OAuth callback |
+| POST | `/api/auth/google/exchange` | Complete Google sign-in |
+| GET / PATCH | `/api/auth/me` | View / update profile |
+| GET | `/api/branches` | List hotel branches |
+| GET | `/api/branches/:id` | Branch details |
+| GET | `/api/rooms` | List and filter rooms |
+| GET | `/api/rooms/:id` | Room details |
+| GET | `/api/search` | Search accommodation |
+| POST / GET | `/api/bookings` | Create / list bookings |
+| GET / PATCH | `/api/bookings/:id` | View / update booking |
+| GET | `/api/favourites` | List favourites |
+| POST / DELETE | `/api/favourites/:branchId` | Add / remove favourite |
+| GET / POST | `/api/reviews` | View / submit reviews |
+| GET | `/api/notifications` | View notifications |
+| PATCH | `/api/notifications/:id/read` | Mark notification as read |
+| POST | `/api/payments/initialize` | Initialize Paystack payment |
+| POST | `/api/payments/webhook` | Receive Paystack webhook |
+| Various | `/api/admin/*` | Protected administration operations |
 
-See `server/src/routes/` for request schemas and authorization details.
+See `server/src/routes/` for the complete route definitions, authorization rules, and request validation.
 
 ## Project structure
 
@@ -169,62 +180,65 @@ the-retreat-hotel/
 │   │   │   ├── guest/
 │   │   │   └── shared/
 │   │   ├── context/
-│   │   ├── hooks/
+│   │   │   └── AppContext.tsx
 │   │   ├── lib/
 │   │   ├── pages/
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── style.css
-│   ├── package.json
-│   └── vite.config.ts
+│   │   │   ├── GuestPages.tsx
+│   │   │   ├── AdminPages.tsx
+│   │   │   ├── GoogleCallback.tsx
+│   │   │   └── PaymentCallback.tsx
+│   │   └── App.tsx
+│   └── package.json
 ├── server/
+│   ├── prisma/
+│   │   └── schema.prisma
 │   ├── src/
 │   │   ├── config/
 │   │   ├── controllers/
 │   │   ├── middleware/
-│   │   ├── models/
 │   │   ├── routes/
 │   │   ├── services/
-│   │   ├── utils/
 │   │   └── index.ts
-│   ├── .env.example
 │   └── package.json
+├── vercel.json
 ├── package.json
 └── README.md
 ```
 
-## Commands
+## Production deployment
 
-| Run from project root | Description |
-| --- | --- |
-| `npm install` | Install root dependencies |
-| `npm run install:all` | Install client and server dependencies |
-| `npm run dev` | Run both development servers |
-| `npm run build` | Build client and server |
+**Frontend — Vercel**
 
-To run one service individually:
-
-```powershell
-npm run dev --prefix client
-npm run dev --prefix server
+```dotenv
+VITE_API_URL=https://the-retreat-api.onrender.com/api
 ```
 
-To start the compiled API after building:
+**Backend — Render**
 
-```powershell
-npm start --prefix server
+```dotenv
+NODE_ENV=production
+CLIENT_URL=https://the-retreat-hotel.vercel.app
+SERVER_URL=https://the-retreat-api.onrender.com
+DATABASE_URL=your-production-postgresql-url
+JWT_SECRET=your-production-jwt-secret
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+PAYSTACK_SECRET_KEY=your-paystack-secret-key
 ```
 
-The frontend builds into `client/dist` and the backend into `server/dist`. The Vite `/api` proxy targets port 4000 during local development; configure API routing separately for production hosting.
+Configure the Google OAuth redirect URI as `https://the-retreat-api.onrender.com/api/auth/google/callback`. Configure Paystack callback and webhook URLs according to the current payment routes. Run Prisma migrations against the intended database before starting the production API.
+
+The repository's `vercel.json` should rewrite frontend paths to `index.html` so direct visits to React Router pages, including OAuth and payment callbacks, work correctly.
 
 ## Troubleshooting
 
-- **Frontend cannot reach API:** Check that the backend is running on port 4000 and the Vite proxy configuration is unchanged.
-- **Admin login fails:** Confirm the credentials and check whether an existing `data.json` has different users.
-- **Hotels or rooms missing:** Check the saved `data.json`; starter data is used only when the file is first created.
-- **JWT/authentication errors:** Verify `server/.env`, restart the API, and sign in again.
-- **Port already in use:** Stop the other process or update the relevant port configuration.
-- **Dependency or build errors:** Install dependencies in both `client` and `server`, then review the terminal output.
+- **No hotels appear:** Check `/api/branches`, the PostgreSQL connection, and whether branch/room data has been imported.
+- **Database errors:** Check `DATABASE_URL`, Neon connectivity, and `npx prisma migrate deploy`.
+- **Google Sign-In fails:** Verify Google credentials, authorized redirect URIs, backend OAuth routes, and frontend callback route. Existing password-only emails are not automatically linked.
+- **Frontend cannot reach API:** Verify `VITE_API_URL`, `CLIENT_URL`, and Render service availability.
+- **Payment callback returns 404:** Check the React route and Vercel SPA rewrite.
+- **Payment remains pending:** Inspect Paystack verification, webhook handling, and the booking's stored payment status.
+- **Admin access denied:** Sign in with an account whose database role is `ADMIN`.
 
 ## License
 
