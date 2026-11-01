@@ -2,6 +2,10 @@
 
 A full-stack hotel booking demo featuring a React guest website, an admin dashboard, and a Node.js/Express API. The project uses TypeScript on both sides and saves development data in a local JSON file.
 
+# Preview
+
+<img src="client/assets/the-retreat-preview.png" alt="Alt text" width="500">
+
 ## Tech stack
 
 | Area | Technologies |
