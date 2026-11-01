@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { api, send, type User } from '../lib/api';
+import { send, type User } from '../lib/api';
 
 /**
  * Global application context interface defining authentication actions,
@@ -10,6 +10,7 @@ type Ctx = {
   setUser: (u: User | null) => void;
   login: (email: string, password: string) => Promise<User>;
   register: (name: string, email: string, password: string) => Promise<User>;
+  googleLogin: (code: string) => Promise<User>;
   logout: () => void;
   toast: (message: string) => void;
   confirm: (message: string, action: () => void | Promise<void>) => void;
@@ -61,6 +62,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return data.user;
   };
 
+  // Exchange Google's temporary login code for our application session.
+  const googleLogin = async (code: string): Promise<User> => {
+    const data = await send<{ user: User; token: string }>(
+      '/auth/google/exchange',
+      'POST',
+      { code }
+    );
+
+    persist(data.user, data.token);
+
+    return data.user;
+  };
+
   const logout = () => {
     localStorage.removeItem('retreat_token');
     localStorage.removeItem('retreat_user');
@@ -77,7 +91,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <Context.Provider
-      value={{ user, setUser, login, register, logout, toast, confirm }}
+      value={{
+        user,
+        setUser,
+        login,
+        register,
+        googleLogin,
+        logout,
+        toast,
+        confirm
+      }}
     >
       {children}
       {notice && (

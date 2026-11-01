@@ -13,6 +13,17 @@ import {
 
 import { publicUser } from '../controllers/helpers.js';
 import type { User } from '../models/types.js';
+import { OAuth2Client } from 'google-auth-library';
+import jwt from 'jsonwebtoken';
+import { createHash, randomBytes } from 'node:crypto';
+
+import {
+  CLIENT_URL,
+  SERVER_URL,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  JWT_SECRET
+} from '../config/env.js';
 
 const router = Router();
 
@@ -188,5 +199,165 @@ router.patch(
     res.json(publicUser(toAppUser(updated)));
   })
 );
+
+// Google OAuth configuration
+const googleClient = new OAuth2Client(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  `${SERVER_URL}/api/auth/google/callback`
+);
+
+// Start Google Sign-In
+router.get('/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.status(503).json({ error: 'Google Sign-In is not configured.' });
+    return;
+  }
+
+  const requestedNext =
+    typeof req.query.next === 'string' ? req.query.next : '';
+
+  const next =
+    requestedNext.startsWith('/') && !requestedNext.startsWith('//')
+      ? requestedNext
+      : '/signin-success';
+
+  const state = jwt.sign({ next }, JWT_SECRET, {
+    expiresIn: '10m'
+  });
+
+  const url = googleClient.generateAuthUrl({
+    access_type: 'online',
+    scope: ['openid', 'email', 'profile'],
+    state,
+    prompt: 'select_account'
+  });
+
+  res.redirect(url);
+});
+
+// Handle Google's callback
+router.get('/google/callback', asyncHandler(async (req, res) => {
+  const code = req.query.code;
+  const state = req.query.state;
+
+  if (typeof code !== 'string' || typeof state !== 'string') {
+    res.status(400).json({ error: 'Invalid Google callback.' });
+    return;
+  }
+
+  const decoded = jwt.verify(state, JWT_SECRET) as { next: string };
+
+  const { tokens } = await googleClient.getToken(code);
+
+  if (!tokens.id_token) {
+    res.status(401).json({ error: 'Google identity token missing.' });
+    return;
+  }
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: GOOGLE_CLIENT_ID
+  });
+
+  const profile = ticket.getPayload();
+
+  if (!profile?.sub || !profile.email || !profile.email_verified) {
+    res.status(401).json({ error: 'Google account could not be verified.' });
+    return;
+  }
+
+  const email = profile.email.toLowerCase();
+
+  let user = await prisma.user.findUnique({
+    where: { googleId: profile.sub }
+  });
+
+  if (!user) {
+    const existing = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existing) {
+      // Don't automatically link a Google identity to an existing
+      // password account without an explicit account-linking flow.
+      res.status(409).json({
+        error: 'An account with this email already exists. Sign in using your password.'
+      });
+      return;
+    }
+
+    user = await prisma.user.create({
+      data: {
+        name: profile.name || email.split('@')[0],
+        email,
+        googleId: profile.sub,
+        role: Role.GUEST
+      }
+    });
+  }
+
+  // Issue a short-lived, single-use code instead of putting
+  // the application's JWT in the redirect URL.
+  const loginCode = randomBytes(32).toString('hex');
+  const codeHash = createHash('sha256')
+    .update(loginCode)
+    .digest('hex');
+
+  await prisma.oAuthLoginCode.create({
+    data: {
+      codeHash,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 2 * 60 * 1000)
+    }
+  });
+
+  const destination = new URL('/auth/google/callback', CLIENT_URL);
+  destination.searchParams.set('code', loginCode);
+  destination.searchParams.set('next', decoded.next);
+
+  res.redirect(destination.toString());
+}));
+
+// Exchange the one-time code for an application JWT
+router.post('/google/exchange', asyncHandler(async (req, res) => {
+  const { code } = z.object({
+    code: z.string().min(1)
+  }).parse(req.body);
+
+  const codeHash = createHash('sha256')
+    .update(code)
+    .digest('hex');
+
+  const loginCode = await prisma.oAuthLoginCode.findUnique({
+    where: { codeHash }
+  });
+
+  if (!loginCode || loginCode.expiresAt <= new Date()) {
+    res.status(401).json({ error: 'Google login code expired or invalid.' });
+    return;
+  }
+
+  // Consume the code so it cannot be used again.
+  await prisma.oAuthLoginCode.delete({
+    where: { id: loginCode.id }
+  });
+
+  const found = await prisma.user.findUnique({
+    where: { id: loginCode.userId }
+  });
+
+  if (!found) {
+    res.status(404).json({ error: 'User not found.' });
+    return;
+  }
+
+  const user = toAppUser(found);
+
+  res.json({
+    user: publicUser(user),
+    token: token(user)
+  });
+}));
 
 export default router;

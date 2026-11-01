@@ -809,6 +809,17 @@ export function Login() {
     }
   };
 
+  const handleGoogleLogin = () => {
+    const next = params.get('next') || '/signin-success';
+
+    const callback = new URLSearchParams({
+      next,
+    });
+
+    window.location.href =
+      `${import.meta.env.VITE_API_URL}/auth/google?${callback.toString()}`;
+  };
+
   return (
     <Wrap>
       <main className="auth-page">
@@ -865,10 +876,23 @@ export function Login() {
           <button className="btn wide">
             {signup ? 'Create Account' : 'Log In'}
           </button>
-          <p className="muted">
-            OAuth buttons in the Figma design require separate provider
-            credentials and are not enabled in this demo.
-          </p>
+          <div className="auth-divider">
+            <span>OR</span>
+          </div>
+
+          <button
+            type="button"
+            className="google-btn"
+            onClick={handleGoogleLogin}
+          >
+            <img
+              src="https://www.google.com/favicon.ico"
+              alt=""
+              width="20"
+              height="20"
+            />
+            Continue with Google
+          </button>
         </form>
       </main>
     </Wrap>
