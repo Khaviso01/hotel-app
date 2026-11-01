@@ -226,10 +226,6 @@ The frontend builds into `client/dist` and the backend into `server/dist`. The V
 - **Port already in use:** Stop the other process or update the relevant port configuration.
 - **Dependency or build errors:** Install dependencies in both `client` and `server`, then review the terminal output.
 
-## Current limitations
-
-This is a development demo, not a production-ready booking platform. It uses a local JSON file rather than a transactional database, image URLs rather than a managed upload service, and does not integrate OAuth or Stripe. Automated tests and production security hardening have not been completed. Do not use the starter admin credentials in a public deployment.
-
 ## License
 
 No license has been specified for this project.
